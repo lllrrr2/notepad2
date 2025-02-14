@@ -1,3 +1,5 @@
+import os.path
+import glob
 import re
 
 def findHoles(asc):
@@ -12,21 +14,22 @@ def findHoles(asc):
 
 def readIFace(path):
 	with open(path, encoding='utf-8') as fd:
-		ifaceDoc = fd.read()
+		doc = fd.read()
 	# remove comment
-	ifaceDoc = re.sub(r'\s+#.+', '', ifaceDoc)
+	ifaceDoc = re.sub(r'\s+#.+', '', doc)
 	# ignore deprecated category
 	index = ifaceDoc.find('cat Deprecated')
 	if index > 0:
 		ifaceDoc = ifaceDoc[:index]
-	return ifaceDoc
+	return ifaceDoc, doc
 
 def findAPIHoles():
-	ifaceDoc = readIFace('../include/Scintilla.iface')
+	ifaceDoc, backup = readIFace('../include/Scintilla.iface')
 
 	# find unused or duplicate API message number
+	pattern = r'(fun|get|set)\s+(?P<type>\w+)\s+(?P<name>\w+)\s*=\s*(?P<value>\d+)'
 	valList = {} # {value: [name]}
-	result = re.findall(r'(fun|get|set)\s+(?P<type>\w+)\s+(?P<name>\w+)\s*=\s*(?P<value>\d+)', ifaceDoc)
+	result = re.findall(pattern, ifaceDoc)
 	for item in result:
 		name = item[2]
 		value = int(item[3])
@@ -38,10 +41,32 @@ def findAPIHoles():
 	allVals = sorted(valList.keys())
 	print('all values:', allVals)
 	allVals = [item for item in allVals if item < 3000]
-	print('min, max and holes:', allVals[0], allVals[-1], findHoles(allVals))
+	holes = findHoles(allVals)
+	print('min, max and holes:', allVals[0], allVals[-1], holes)
+
+	if holes:
+		values = []
+		def print_holes(tag, regex, doc):
+			result = re.findall(regex, doc)
+			output = []
+			for item in result:
+				value = int(item[3])
+				if value in holes:
+					name = item[2]
+					values.append(value)
+					output.append(f'{value} {name}')
+			print(tag, ', '.join(sorted(output)))
+
+		ifaceDoc = backup
+		print_holes('used:', r'#\s*' + pattern, ifaceDoc)
+		index = ifaceDoc.find('cat Deprecated')
+		if index > 0:
+			ifaceDoc = ifaceDoc[index:]
+			print_holes('deprecated:', pattern, ifaceDoc)
+		print('unused:', sorted(set(holes) - set(values)))
 
 def checkLexerDefinition():
-	ifaceDoc = readIFace('../include/SciLexer.iface')
+	ifaceDoc, _ = readIFace('../include/SciLexer.iface')
 
 	# ensure SCLEX_ is unique
 	valList = {} # {value: [name]}
@@ -59,11 +84,16 @@ def checkLexerDefinition():
 	# ensure style number is unique within same lexer and not used by StylesCommon
 	prefixMap = {} # {prefix: lexer}
 	result = re.findall(r'lex\s+(?P<name>\w+)\s*=(.+)+', ifaceDoc)
+	stylePrefix = {} # {lexer: [prefix]}
 	for name, value in result:
 		if name == 'XML':
 			name = 'HTML'
-		for item in value.split():
+		items = value.split()
+		for item in items:
 			prefixMap[item] = name
+		lexer = items[0]
+		assert lexer not in stylePrefix
+		stylePrefix[lexer] = items[1:]
 
 	lexrList = {} # {lexer: {value: [name]}}
 	result = re.findall(r'val\s+(?P<name>SCE_\w+)\s*=\s*(?P<value>\d+)', ifaceDoc)
@@ -78,6 +108,21 @@ def checkLexerDefinition():
 		if values:
 			print(f'duplicate value: {value} {name} {" ".join(values)}')
 		values.append(name)
+
+	for path in glob.glob('../lexers/Lex*.cxx'):
+		path = os.path.normpath(path)
+		name = os.path.basename(path)
+
+		with open(path, encoding='utf-8') as fd:
+			doc = fd.read()
+		prefix = set()
+		lexers = re.findall(r'SCLEX_\w+', doc)
+		for lexer in lexers:
+			if lexer in stylePrefix:
+				prefix |= set(stylePrefix[lexer])
+		items = set(re.findall(r'SCE_\w+?_', doc))
+		if unknown := items - prefix:
+			print(name, 'unknown style:', ', '.join(sorted(unknown)))
 
 findAPIHoles()
 checkLexerDefinition()

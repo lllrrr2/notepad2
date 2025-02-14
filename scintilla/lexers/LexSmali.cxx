@@ -1,4 +1,4 @@
-// This file is part of Notepad2.
+// This file is part of Notepad4.
 // See License.txt for details about distribution and modification.
 //! Lexer for javap, Jasmin, Android Dalvik Smali.
 
@@ -76,8 +76,8 @@ bool IsJavaType(int ch, int chPrev, int chNext) noexcept {
 
 #define MAX_WORD_LENGTH	31
 void ColouriseSmaliDoc(Sci_PositionU startPos, Sci_Position length, int initStyle, LexerWordList keywordLists, Accessor &styler) {
-	const WordList &keywords = *keywordLists[0];
-	//const WordList &kwInstruction = *keywordLists[10];
+	const WordList &keywords = keywordLists[0];
+	//const WordList &kwInstruction = keywordLists[10];
 
 	int state = initStyle;
 	int ch = 0;
@@ -148,7 +148,7 @@ void ColouriseSmaliDoc(Sci_PositionU startPos, Sci_Position length, int initStyl
 					}
 				}
 				styler.ColorTo(i, state);
-				state = SCE_L_DEFAULT;
+				state = SCE_SMALI_DEFAULT;
 			} else if (wordLen < MAX_WORD_LENGTH) {
 				buf[wordLen++] = static_cast<char>(ch);
 			}
@@ -331,7 +331,7 @@ bool IsAnnotationLine(LexAccessor &styler, Sci_Line line) noexcept {
 	return false;
 }
 
-void FoldSmaliDoc(Sci_PositionU startPos, Sci_Position length, int initStyle, LexerWordList, Accessor &styler) {
+void FoldSmaliDoc(Sci_PositionU startPos, Sci_Position length, int initStyle, LexerWordList /*keywordLists*/, Accessor &styler) {
 	const Sci_PositionU endPos = startPos + length;
 	Sci_Line lineCurrent = styler.GetLine(startPos);
 	int levelCurrent = SC_FOLDLEVELBASE;
@@ -366,13 +366,12 @@ void FoldSmaliDoc(Sci_PositionU startPos, Sci_Position length, int initStyle, Le
 		}
 
 		if (atEOL || (i == endPos - 1)) {
+			levelNext = sci::max(levelNext, SC_FOLDLEVELBASE);
 			const int levelUse = levelCurrent;
-			int lev = levelUse | levelNext << 16;
+			int lev = levelUse | (levelNext << 16);
 			if (levelUse < levelNext)
 				lev |= SC_FOLDLEVELHEADERFLAG;
-			if (lev != styler.LevelAt(lineCurrent)) {
-				styler.SetLevel(lineCurrent, lev);
-			}
+			styler.SetLevel(lineCurrent, lev);
 			lineCurrent++;
 			levelCurrent = levelNext;
 		}
@@ -381,4 +380,4 @@ void FoldSmaliDoc(Sci_PositionU startPos, Sci_Position length, int initStyle, Le
 
 }
 
-LexerModule lmSmali(SCLEX_SMALI, ColouriseSmaliDoc, "smali", FoldSmaliDoc);
+extern const LexerModule lmSmali(SCLEX_SMALI, ColouriseSmaliDoc, "smali", FoldSmaliDoc);

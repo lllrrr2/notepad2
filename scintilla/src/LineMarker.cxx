@@ -5,6 +5,7 @@
 // Copyright 1998-2011 by Neil Hodgson <neilh@scintilla.org>
 // The License.txt file describes the conditions under which this software may be distributed.
 
+#include <cstdint>
 #include <cstring>
 #include <cmath>
 
@@ -37,7 +38,7 @@ LineMarker::LineMarker(const LineMarker &other) : LineMarkerPod(other) {
 
 LineMarker &LineMarker::operator=(const LineMarker &other) {
 	if (this != &other) {
-		(LineMarkerPod &)(*this) = other;
+		static_cast<LineMarkerPod &>(*this) = other;
 		CopyImage(other);
 	}
 	return *this;
@@ -490,9 +491,39 @@ void LineMarker::Draw(Surface *surface, PRectangle rcWhole, const Font *fontForC
 	}
 	break;
 
+	case MarkerSymbol::Bar: {
+		PRectangle rcBar = rcWhole;
+		const XYPOSITION widthBar = std::floor(rcWhole.Width() / 3.0);
+		rcBar.left = centreX - std::floor(widthBar / 2.0);
+		rcBar.right = rcBar.left + widthBar;
+		surface->SetClip(rcWhole);
+		switch (part) {
+		case LineMarker::FoldPart::headWithTail:
+			surface->RectangleDraw(rcBar, FillStroke(back, fore, strokeWidth));
+			break;
+		case LineMarker::FoldPart::head:
+			rcBar.bottom += 5;
+			surface->RectangleDraw(rcBar, FillStroke(back, fore, strokeWidth));
+			break;
+		case LineMarker::FoldPart::tail:
+			rcBar.top -= 5;
+			surface->RectangleDraw(rcBar, FillStroke(back, fore, strokeWidth));
+			break;
+		case LineMarker::FoldPart::body:
+			rcBar.top -= 5;
+			rcBar.bottom += 5;
+			surface->RectangleDraw(rcBar, FillStroke(back, fore, strokeWidth));
+			break;
+		default:
+			break;
+		}
+		surface->PopClip();
+	}
+	break;
+
 	case MarkerSymbol::Bookmark: {
 		const XYPOSITION halfHeight = std::floor(minDim / 3);
-		Point pts[] = {
+		const Point pts[] = {
 			Point(rcWhole.left, centreY - halfHeight),
 			Point(rcWhole.right - strokeWidth - 2, centreY - halfHeight),
 			Point(rcWhole.right - strokeWidth - 2 - halfHeight, centreY),
@@ -505,7 +536,7 @@ void LineMarker::Draw(Surface *surface, PRectangle rcWhole, const Font *fontForC
 
 	case MarkerSymbol::VerticalBookmark: {
 		const XYPOSITION halfWidth = std::floor(minDim / 3);
-		Point pts[] = {
+		const Point pts[] = {
 			Point(centreX - halfWidth, centreY - dimOn2),
 			Point(centreX + halfWidth, centreY - dimOn2),
 			Point(centreX + halfWidth, centreY + dimOn2),

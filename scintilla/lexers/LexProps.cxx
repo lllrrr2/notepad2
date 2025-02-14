@@ -31,11 +31,11 @@ constexpr bool IsCommentChar(unsigned char ch) noexcept {
 	return ch == '#' || ch == ';' || ch == '!';
 }
 
-constexpr bool IsAssignChar(unsigned char ch) noexcept {
+constexpr bool isAssignChar(unsigned char ch) noexcept {
 	return ch == '=' || ch == ':';
 }
 
-void ColourisePropsDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int initStyle, LexerWordList, Accessor &styler) {
+void ColourisePropsDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int initStyle, LexerWordList /*keywordLists*/, Accessor &styler) {
 	// property lexer.props.allow.initial.spaces
 	//	For properties files, set to 0 to style all lines that start with whitespace in the default style.
 	//	This is not suitable for SciTE .properties files which use indentation for flow control but
@@ -58,10 +58,10 @@ void ColourisePropsDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int initS
 #endif
 
 	while (lineCurrent <= maxLines) {
-		const Sci_PositionU lineEndPos = lineStartNext - 1;
 		Sci_PositionU i = lineStartCurrent;
 		unsigned char ch = styler[i];
 		if (allowInitialSpaces) {
+			const Sci_PositionU lineEndPos = lineStartNext - 1;
 			while (i < lineEndPos && isspacechar(ch)) {
 				ch = styler[++i];
 			}
@@ -79,13 +79,13 @@ void ColourisePropsDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int initS
 			++i;
 			styler.ColorTo(i, SCE_PROPS_DEFVAL);
 			const char chNext = styler[i];
-			if (IsAssignChar(chNext)) {
+			if (isAssignChar(chNext)) {
 				styler.ColorTo(i + 1, SCE_PROPS_ASSIGNMENT);
 			}
 		} else if (allowInitialSpaces || !isspacechar(ch)) {
 			while (i < lineStartNext) {
 				ch = styler[i];
-				if (IsAssignChar(ch)) {
+				if (isAssignChar(ch)) {
 					styler.ColorTo(i, SCE_PROPS_KEY);
 					++i;
 					styler.ColorTo(i, SCE_PROPS_ASSIGNMENT);
@@ -120,14 +120,16 @@ void ColourisePropsDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int initS
 			int nextLevel;
 			if (initStyle == SCE_PROPS_SECTION) {
 				nextLevel = SC_FOLDLEVELBASE | SC_FOLDLEVELHEADERFLAG;
+				if (prevLevel & SC_FOLDLEVELHEADERFLAG) {
+					// empty section
+					styler.SetLevel(lineCurrent - 1, SC_FOLDLEVELBASE);
+				}
 			} else if (prevLevel & SC_FOLDLEVELHEADERFLAG) {
 				nextLevel = (prevLevel & SC_FOLDLEVELNUMBERMASK) + 1;
 			} else {
 				nextLevel = prevLevel;
 			}
-			if (nextLevel != styler.LevelAt(lineCurrent)) {
-				styler.SetLevel(lineCurrent, nextLevel);
-			}
+			styler.SetLevel(lineCurrent, nextLevel);
 			prevLevel = nextLevel;
 		}
 #endif
@@ -138,44 +140,46 @@ void ColourisePropsDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int initS
 }
 
 #if ENABLE_FOLD_PROPS_COMMENT
-void FoldPropsDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int /*initStyle*/, LexerWordList, Accessor &styler) {
+void FoldPropsDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int /*initStyle*/, LexerWordList /*keywordLists*/, Accessor &styler) {
 	const Sci_Position endPos = startPos + lengthDoc;
 	const Sci_Line maxLines = styler.GetLine((endPos == styler.Length()) ? endPos : endPos - 1);
 
 	Sci_Line lineCurrent = styler.GetLine(startPos);
 
 	int prevLevel = SC_FOLDLEVELBASE;
-	bool prevComment = false;
-	bool prev2Comment = false;
+	int prevState = 0;
+	int prev2State = 0;
 	if (lineCurrent > 0) {
 		prevLevel = styler.LevelAt(lineCurrent - 1);
-		prevComment = styler.GetLineState(lineCurrent - 1) == SCE_PROPS_COMMENT;
-		prev2Comment = lineCurrent > 1 && styler.GetLineState(lineCurrent - 2) == SCE_PROPS_COMMENT;
+		prevState = styler.GetLineState(lineCurrent - 1);
+		prev2State = styler.GetLineState(lineCurrent - 2);
 	}
 
-	bool commentHead = prevComment && (prevLevel & SC_FOLDLEVELHEADERFLAG);
+	bool commentHead = (prevState == SCE_PROPS_COMMENT) && (prevLevel & SC_FOLDLEVELHEADERFLAG);
 	while (lineCurrent <= maxLines) {
 		int nextLevel;
 		const int initStyle = styler.GetLineState(lineCurrent);
 
-		const bool currentComment = initStyle == SCE_PROPS_COMMENT;
-		if (currentComment) {
-			commentHead = !prevComment;
+		if (initStyle == SCE_PROPS_COMMENT) {
 			if (prevLevel & SC_FOLDLEVELHEADERFLAG) {
 				nextLevel = (prevLevel & SC_FOLDLEVELNUMBERMASK) + 1;
 			} else {
 				nextLevel = prevLevel;
 			}
+			commentHead = prevState != SCE_PROPS_COMMENT;
 			nextLevel |= commentHead ? SC_FOLDLEVELHEADERFLAG : 0;
 		} else {
 			if (initStyle == SCE_PROPS_SECTION) {
 				nextLevel = SC_FOLDLEVELBASE | SC_FOLDLEVELHEADERFLAG;
+				if (prevState == SCE_PROPS_SECTION) {
+					commentHead = true; // empty section
+				}
 			} else {
 				if (commentHead) {
 					nextLevel = prevLevel & SC_FOLDLEVELNUMBERMASK;
 				} else if (prevLevel & SC_FOLDLEVELHEADERFLAG) {
 					nextLevel = (prevLevel & SC_FOLDLEVELNUMBERMASK) + 1;
-				} else if (prevComment && prev2Comment) {
+				} else if ((prevState == SCE_PROPS_COMMENT) && (prev2State == SCE_PROPS_COMMENT)) {
 					nextLevel = prevLevel - 1;
 				} else {
 					nextLevel = prevLevel;
@@ -188,13 +192,10 @@ void FoldPropsDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int /*initStyl
 			}
 		}
 
-		if (nextLevel != styler.LevelAt(lineCurrent)) {
-			styler.SetLevel(lineCurrent, nextLevel);
-		}
-
+		styler.SetLevel(lineCurrent, nextLevel);
 		prevLevel = nextLevel;
-		prev2Comment = prevComment;
-		prevComment = currentComment;
+		prev2State = prevState;
+		prevState = initStyle;
 		lineCurrent++;
 	}
 }
@@ -203,7 +204,7 @@ void FoldPropsDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int /*initStyl
 }
 
 #if ENABLE_FOLD_PROPS_COMMENT
-LexerModule lmProps(SCLEX_PROPERTIES, ColourisePropsDoc, "props", FoldPropsDoc);
+extern const LexerModule lmProps(SCLEX_PROPERTIES, ColourisePropsDoc, "props", FoldPropsDoc);
 #else
-LexerModule lmProps(SCLEX_PROPERTIES, ColourisePropsDoc, "props");
+extern const LexerModule lmProps(SCLEX_PROPERTIES, ColourisePropsDoc, "props");
 #endif

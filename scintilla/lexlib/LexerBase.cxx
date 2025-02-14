@@ -7,8 +7,12 @@
 
 #include <cstdlib>
 #include <cassert>
+#include <cstring>
 
+#include <string>
 #include <string_view>
+#include <vector>
+//#include <map>
 
 #include "ILexer.h"
 #include "Scintilla.h"
@@ -24,17 +28,6 @@
 using namespace Lexilla;
 
 LexerBase::LexerBase(const LexerModule *module_) : lexer(*module_) {
-	auto *iter = keywordLists;
-	for (int wl = KEYWORDSET_MAX; wl; wl--) {
-		*iter++ = new WordList;
-	}
-}
-
-LexerBase::~LexerBase() {
-	auto *iter = keywordLists;
-	for (int wl = KEYWORDSET_MAX; wl; wl--) {
-		delete *iter++;
-	}
 }
 
 void SCI_METHOD LexerBase::Release() noexcept {
@@ -72,9 +65,9 @@ const char * SCI_METHOD LexerBase::DescribeWordListSets() const noexcept {
 	return "";
 }
 
-Sci_Position SCI_METHOD LexerBase::WordListSet(int n, bool toLower, const char *wl) {
+Sci_Position SCI_METHOD LexerBase::WordListSet(int n, int attribute, const char *wl) {
 	if (n < KEYWORDSET_MAX) {
-		if (keywordLists[n]->Set(wl, toLower)) {
+		if (keywordLists[n].Set(wl, static_cast<WordList::KeywordAttr>(attribute))) {
 			return 0;
 		}
 	}
@@ -82,7 +75,7 @@ Sci_Position SCI_METHOD LexerBase::WordListSet(int n, bool toLower, const char *
 }
 
 void SCI_METHOD LexerBase::Lex(Sci_PositionU startPos, Sci_Position lengthDoc, int initStyle, Scintilla::IDocument *pAccess) {
-	Accessor styler(pAccess, &props);
+	Accessor styler(pAccess, props);
 	lexer.fnLexer(startPos, lengthDoc, initStyle, keywordLists, styler);
 	styler.Flush();
 }
@@ -102,7 +95,7 @@ void SCI_METHOD LexerBase::Fold(Sci_PositionU startPos, Sci_Position lengthDoc, 
 			}
 		}
 
-		Accessor styler(pAccess, &props);
+		Accessor styler(pAccess, props);
 		lexer.fnFolder(startPos, lengthDoc, initStyle, keywordLists, styler);
 	}
 }

@@ -26,7 +26,7 @@ private:
 
 	void GetNextChar() noexcept {
 		if (!multiByteAccess) {
-			chNext = static_cast<unsigned char>(styler.SafeGetCharAt(currentPos + 1));
+			chNext = styler.SafeGetUCharAt(currentPos + 1);
 		} else {
 			chNext = styler.GetCharacterAndWidth(currentPos + width, &widthNext);
 		}
@@ -84,6 +84,8 @@ public:
 		} else {
 			atLineStart = false;
 			atLineEnd = true;
+			//! different from official Lexilla which set them to space.
+			// zero is consistent of GetRelative() and GetRelativeCharacter().
 			chPrev = 0;
 			ch = 0;
 			chNext = 0;
@@ -123,13 +125,20 @@ public:
 	Sci_Position LengthCurrent() const noexcept {
 		return currentPos - styler.GetStartSegment();
 	}
+	char GetRelativeChar(Sci_Position n) const noexcept {
+		return styler.SafeGetCharAt(currentPos + n);
+	}
 	int GetRelative(Sci_Position n) const noexcept {
-		return static_cast<unsigned char>(styler.SafeGetCharAt(currentPos + n));
+		return styler.SafeGetUCharAt(currentPos + n);
 	}
 #if 0
 	[[deprecated]]
+	int GetRelativeChar(Sci_Position n, char chDefault) const noexcept {
+		return styler.SafeGetCharAt(currentPos + n, chDefault);
+	}
+	[[deprecated]]
 	int GetRelative(Sci_Position n, char chDefault) const noexcept {
-		return static_cast<unsigned char>(styler.SafeGetCharAt(currentPos + n, chDefault));
+		return styler.SafeGetUCharAt(currentPos + n, chDefault);
 	}
 #endif
 	int GetRelativeCharacter(Sci_Position n) noexcept {
@@ -154,14 +163,14 @@ public:
 		}
 #endif
 		// fast version for single byte encodings
-		return static_cast<unsigned char>(styler.SafeGetCharAt(currentPos + n));
+		return styler.SafeGetUCharAt(currentPos + n);
 	}
 	bool AtDocumentEnd() const noexcept {
 		return currentPos == static_cast<Sci_PositionU>(styler.Length());
 	}
 	bool MatchLineEnd() const noexcept {
 		//return currentPos == lineEnd;
-		return atLineEnd;
+		return ch == '\n' || ch == '\r'; //! Unicode line ending not supported
 	}
 #if 0
 	[[deprecated]]
@@ -173,17 +182,20 @@ public:
 		return (ch == static_cast<unsigned char>(ch0)) && (chNext == static_cast<unsigned char>(ch1));
 	}
 	bool Match(char ch0, char ch1, char ch2) const noexcept {
-		return Match(ch0, ch1) && ch2 == styler.SafeGetCharAt(currentPos + 2);
+		return Match(ch0, ch1) && ch2 == styler[currentPos + 2];
 	}
 	bool Match(char ch0, char ch1, char ch2, char ch3) const noexcept {
-		return Match(ch0, ch1, ch2) && ch3 == styler.SafeGetCharAt(currentPos + 3);
+		return Match(ch0, ch1, ch2) && ch3 == styler[currentPos + 3];
 	}
 
+	bool MatchNext() const noexcept {
+		return ch == chNext && ch == static_cast<unsigned char>(styler[currentPos + 2]);
+	}
 	bool MatchNext(char ch0, char ch1) const noexcept {
-		return chNext == static_cast<unsigned char>(ch0) && ch1 == styler.SafeGetCharAt(currentPos + 2);
+		return chNext == static_cast<unsigned char>(ch0) && ch1 == styler[currentPos + 2];
 	}
 	bool MatchNext(char ch0, char ch1, char ch2) const noexcept {
-		return MatchNext(ch0, ch1) && ch2 == styler.SafeGetCharAt(currentPos + 3);
+		return MatchNext(ch0, ch1) && ch2 == styler[currentPos + 3];
 	}
 
 	bool Match(const char *s) const noexcept {
@@ -199,13 +211,14 @@ public:
 		}
 		s++;
 		for (Sci_PositionU pos = currentPos + 2; *s; s++, pos++) {
-			if (*s != styler.SafeGetCharAt(pos)) {
+			if (*s != styler[pos]) {
 				return false;
 			}
 		}
 		return true;
 	}
 	bool MatchIgnoreCase(const char *s) const noexcept;
+	bool MatchLowerCase(const char *s) const noexcept;
 
 	void GetCurrent(char *s, Sci_PositionU len) const noexcept {
 		styler.GetRange(styler.GetStartSegment(), currentPos, s, len);
@@ -217,10 +230,10 @@ public:
 	void SeekTo(Sci_PositionU startPos) noexcept {
 		assert(startPos < lineStartNext && startPos >= static_cast<Sci_PositionU>(styler.LineStart(currentLine)));
 		currentPos = startPos;
-		chPrev = 0;
+		chPrev = 0; // GetRelativeCharacter(-1)
 		if (!multiByteAccess) {
 			ch = static_cast<unsigned char>(styler[startPos]);
-			chNext = static_cast<unsigned char>(styler.SafeGetCharAt(startPos + 1));
+			chNext = styler.SafeGetUCharAt(startPos + 1);
 		} else {
 			ch = styler.GetCharacterAndWidth(startPos, &widthNext);
 			width = widthNext;
@@ -262,6 +275,16 @@ public:
 			|| (chPrev == '\r' && ch == '\n' && currentPos >= 2 && ch0 == styler[currentPos - 2]);
 	}
 
+	int GetCharAfterNext() const noexcept {
+		//return GetRelativeCharacter(2);
+		const Sci_Position pos = currentPos + 1; // currentPos + width
+		Sci_Position widthNext_ = widthNext;
+		if (chNext >= 0x80 && styler.Encoding() == EncodingType::unicode) {
+			styler.GetCharacterAndWidth(pos, &widthNext_);
+		}
+		return styler.SafeGetUCharAt(pos + widthNext_);
+	}
+
 	int GetLineLastChar() const noexcept {
 		if (chPrev == '\r' && ch == '\n' && currentPos >= 2) {
 			return static_cast<unsigned char>(styler[currentPos - 2]);
@@ -269,31 +292,8 @@ public:
 		return chPrev;
 	}
 
-	int GetDocNextChar(bool ignoreCurrent = false) const noexcept {
-		if (!ignoreCurrent && !IsWhiteSpace(ch)) {
-			return ch;
-		}
-		if (!IsWhiteSpace(chNext)) {
-			return chNext;
-		}
-		// currentPos + width + widthNext
-		return LexGetNextChar(styler, currentPos + 2);
-	}
-
-	int GetLineNextChar(bool ignoreCurrent = false) const noexcept {
-		if (!ignoreCurrent && !IsWhiteSpace(ch)) {
-			return ch;
-		}
-		// currentPos + width for Unicode line ending
-		if (currentPos + 1 == lineStartNext) {
-			return '\0';
-		}
-		if (!IsWhiteSpace(chNext)) {
-			return chNext;
-		}
-		// currentPos + width + widthNext
-		return LexGetNextChar(styler, currentPos + 2, lineStartNext);
-	}
+	int GetDocNextChar(bool ignoreCurrent = false) const noexcept;
+	int GetLineNextChar(bool ignoreCurrent = false) const noexcept;
 };
 
 bool HighlightTaskMarker(StyleContext &sc, int &visibleChars, int visibleCharsBefore, int markerStyle);

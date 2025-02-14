@@ -47,6 +47,9 @@ public:
 	void Add(Sci::Position increment) noexcept {
 		position = position + increment;
 	}
+	void AddVirtualSpace(Sci::Position increment) noexcept {
+		SetVirtualSpace(virtualSpace + increment);
+	}
 	bool IsValid() const noexcept {
 		return position >= 0;
 	}
@@ -69,14 +72,20 @@ struct SelectionSegment {
 	bool Empty() const noexcept {
 		return start == end;
 	}
+	Sci::Position Length() const noexcept {
+		return end.Position() - start.Position();
+	}
 	void Extend(SelectionPosition p) noexcept {
 		if (start > p)
 			start = p;
 		if (end < p)
 			end = p;
 	}
-	Sci::Position Length() const noexcept {
-		return end.Position() - start.Position();
+	SelectionSegment Subtract(Sci::Position increment) const noexcept {
+		SelectionSegment ret(start, end);
+		ret.start.Add(-increment);
+		ret.end.Add(-increment);
+		return ret;
 	}
 };
 
@@ -112,6 +121,7 @@ struct SelectionRange {
 	bool Contains(Sci::Position pos) const noexcept;
 	bool Contains(SelectionPosition sp) const noexcept;
 	bool ContainsCharacter(Sci::Position posCharacter) const noexcept;
+	bool ContainsCharacter(SelectionPosition spCharacter) const noexcept;
 	SelectionSegment Intersect(SelectionSegment check) const noexcept;
 	SelectionPosition Start() const noexcept {
 		return (anchor < caret) ? anchor : caret;
@@ -141,7 +151,7 @@ public:
 	};
 	SelTypes selType;
 
-	Selection() noexcept;
+	Selection();
 	bool IsRectangular() const noexcept;
 	Sci::Position MainCaret() const noexcept;
 	Sci::Position MainAnchor() const noexcept;
@@ -167,27 +177,30 @@ public:
 	void MovePositions(bool insertion, Sci::Position startChange, Sci::Position length) noexcept;
 	void TrimSelection(SelectionRange range) noexcept;
 	void TrimOtherSelections(size_t r, SelectionRange range) noexcept;
-	void SetSelection(SelectionRange range);
+	void SetSelection(SelectionRange range) noexcept;
 	void AddSelection(SelectionRange range);
 	void AddSelectionWithoutTrim(SelectionRange range);
 	void DropSelection(size_t r) noexcept;
-	void DropAdditionalRanges();
+	void DropAdditionalRanges() noexcept;
 	void TentativeSelection(SelectionRange range);
 	void CommitTentative() noexcept;
 	InSelection RangeType(size_t r) const noexcept;
 	InSelection CharacterInSelection(Sci::Position posCharacter) const noexcept;
 	InSelection InSelectionForEOL(Sci::Position pos) const noexcept;
 	Sci::Position VirtualSpaceFor(Sci::Position pos) const noexcept;
-	void Clear();
+	void Clear() noexcept;
 	void Reset() noexcept;
 	void RemoveDuplicates() noexcept;
 	void RotateMain() noexcept;
 	bool Tentative() const noexcept {
 		return tentativeMain;
 	}
+	std::vector<SelectionRange *> SortedRanges();
+#if 0
 	std::vector<SelectionRange> RangesCopy() const {
 		return ranges;
 	}
+#endif
 };
 
 }

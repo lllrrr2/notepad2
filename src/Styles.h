@@ -1,7 +1,7 @@
 /******************************************************************************
 *
 *
-* Notepad2
+* Notepad4
 *
 * Styles.h
 *   Scintilla Style Management
@@ -13,7 +13,7 @@
 *
 *                                              (c) Florian Balmer 1996-2011
 *                                                  florian.balmer@gmail.com
-*                                               http://www.flos-freeware.ch
+*                                              https://www.flos-freeware.ch
 *
 *
 ******************************************************************************/
@@ -33,129 +33,117 @@
 
 #define MAX_INI_SECTION_SIZE_STYLES			(8 * 1024)
 
+enum LineHighlightMode {
+	LineHighlightMode_None = 0,
+	LineHighlightMode_BackgroundColor,
+	LineHighlightMode_OutlineFrame,
+};
+
+enum CaretStyle {
+	CaretStyle_Block = 0,
+	CaretStyle_LineWidth1,
+	CaretStyle_LineWidth2,
+	CaretStyle_LineWidth3,
+};
+
+enum StyleDefinitionMask {
+	StyleDefinitionMask_None = 0,
+	StyleDefinitionMask_FontFace = 1 << 0,
+	StyleDefinitionMask_FontSize = 1 << 1,
+	StyleDefinitionMask_ForeColor = 1 << 2,
+	StyleDefinitionMask_BackColor = 1 << 3,
+	StyleDefinitionMask_FontWeight = 1 << 4,
+	StyleDefinitionMask_Charset = 1 << 5,
+};
+
+struct StyleDefinition {
+	UINT mask;
+	int fontSize;
+	COLORREF foreColor;
+	COLORREF backColor;
+	int weight;
+	bool italic;
+	bool underline;
+	bool strike;
+	bool overline;
+	bool eolFilled;
+	uint8_t unused;
+	uint16_t backIndex;
+	int charset;
+	WCHAR fontWide[LF_FACESIZE];
+	char fontFace[LF_FACESIZE * kMaxMultiByteCount];
+};
+
 extern PEDITLEXER pLexCurrent;
 extern int np2LexLangIndex;
-extern BOOL bUse2ndGlobalStyle;
 extern int np2StyleTheme;
-extern BOOL bCurrentLexerHasLineComment;
-extern BOOL bCurrentLexerHasBlockComment;
-extern uint8_t currentLexKeywordAttr[NUMKEYWORD];
 
-void	Style_ReleaseResources(void);
-void	Style_Load(void);
-void	Style_Save(void);
-BOOL	Style_Import(HWND hwnd);
-BOOL	Style_Export(HWND hwnd);
-void	Style_LoadTabSettings(PEDITLEXER pLex);
-void	Style_SaveTabSettings(PEDITLEXER pLex);
-void	EditApplyDefaultEncoding(PEDITLEXER pLex);
+void	Style_ReleaseResources() noexcept;
+void	Style_Load() noexcept;
+void	Style_Save() noexcept;
+bool	Style_Import(HWND hwnd) noexcept;
+bool	Style_Export(HWND hwnd) noexcept;
+void	Style_LoadTabSettings(LPCEDITLEXER pLex) noexcept;
+void	Style_SaveTabSettings(LPCEDITLEXER pLex) noexcept;
+void	EditApplyDefaultEncoding(LPCEDITLEXER pLex, BOOL bLexerChanged) noexcept;
+void	InitAutoCompletionCache(LPCEDITLEXER pLex) noexcept;
 
-void	Style_DetectBaseFontSize(HWND hwnd);
-HFONT	Style_CreateCodeFont(UINT dpi);
-void	Style_OnDPIChanged(PEDITLEXER pLex);
-void	Style_OnStyleThemeChanged(int theme);
-void	Style_InitDefaultColor(void);
-void	Style_SetLexer(PEDITLEXER pLexNew, BOOL bLexerChanged);
-BOOL	Style_SetLexerFromFile(LPCWSTR lpszFile);
-void	Style_SetLexerFromName(LPCWSTR lpszFile, LPCWSTR lpszName);
-BOOL	Style_MaybeBinaryFile(LPCWSTR lpszFile);
-BOOL	Style_CanOpenFile(LPCWSTR lpszFile);
-void	Style_SetLexerFromID(int rid);
-int		Style_GetMatchLexerIndex(int rid);
+void	Style_DetectBaseFontSize(HMONITOR hMonitor) noexcept;
+HFONT	Style_CreateCodeFont(UINT dpi) noexcept;
+void	Style_OnDPIChanged(LPCEDITLEXER pLex) noexcept;
+void	Style_OnStyleThemeChanged(int theme) noexcept;
+void	Style_InitDefaultColor() noexcept;
+void	Style_SetLexer(PEDITLEXER pLexNew, BOOL bLexerChanged) noexcept;
+bool	Style_SetLexerFromFile(LPCWSTR lpszFile) noexcept;
+void	Style_SetLexerFromName(LPCWSTR lpszFile, LPCWSTR lpszName) noexcept;
+bool	Style_CanOpenFile(LPCWSTR lpszFile) noexcept;
+void	Style_SetLexerFromID(int rid) noexcept;
+int		Style_GetMatchLexerIndex(int rid) noexcept;
 
-int		Style_GetDocTypeLanguage(void);
-void	Style_UpdateLexerKeywords(LPCEDITLEXER pLexNew);
-void	Style_UpdateLexerKeywordAttr(LPCEDITLEXER pLexNew);
-LPCWSTR Style_GetCurrentLexerName(LPWSTR lpszName, int cchName);
-void	Style_SetLexerByLangIndex(int lang);
-void	Style_UpdateSchemeMenu(HMENU hmenu);
+int		Style_GetDocTypeLanguage() noexcept;
+LPCWSTR Style_GetCurrentLexerName(LPWSTR lpszName, int cchName) noexcept;
+void	Style_SetLexerByLangIndex(int lang) noexcept;
+void	Style_UpdateSchemeMenu(HMENU hmenu) noexcept;
 
-void	Style_SetDefaultFont(HWND hwnd, BOOL bCode);
-void	Style_SetIndentGuides(BOOL bShow);
-void	Style_SetBookmark(void);
-void	Style_UpdateCaret(void);
-void	Style_SetLongLineColors(void);
-void	Style_HighlightCurrentLine(void);
-void	Style_ToggleUse2ndGlobalStyle(void);
-void	Style_ToggleUseDefaultCodeStyle(void);
-LPWSTR	Style_GetOpenDlgFilterStr(BOOL open, LPCWSTR lpszFile, int lexers[]);
+void	Style_SetDefaultFont(HWND hwnd, bool bCode) noexcept;
+void	Style_SetIndentGuides(bool bShow) noexcept;
+void	Style_SetBookmark() noexcept;
+void	Style_UpdateCaret() noexcept;
+void	Style_SetLongLineColors() noexcept;
+void	Style_HighlightCurrentLine() noexcept;
+void	Style_ToggleUseDefaultCodeStyle() noexcept;
+LPWSTR	Style_GetOpenDlgFilterStr(bool open, LPCWSTR lpszFile, int lexers[]) noexcept;
 
-BOOL	Style_StrGetFontEx(LPCWSTR lpszStyle, LPWSTR lpszFont, int cchFont, BOOL bDefaultStyle);
-BOOL	Style_StrGetCharSet(LPCWSTR lpszStyle, int *charset);
-BOOL	Style_StrGetLocale(LPCWSTR lpszStyle, LPWSTR lpszLocale, int cchLocale);
-BOOL	Style_StrGetFontSize(LPCWSTR lpszStyle, int *size);
-BOOL	Style_StrGetSize(LPCWSTR lpszStyle, int *size);
-BOOL	Style_StrGetFontWeight(LPCWSTR lpszStyle, int *weight);
-BOOL	Style_StrGetColor(BOOL bFore, LPCWSTR lpszStyle, COLORREF *rgb);
+bool	Style_StrGetFontEx(LPCWSTR lpszStyle, LPWSTR lpszFont, int cchFont, bool bDefaultStyle) noexcept;
+bool	Style_StrGetCharSet(LPCWSTR lpszStyle, int *charset) noexcept;
+BOOL	Style_StrGetLocale(LPCWSTR lpszStyle, LPWSTR lpszLocale, int cchLocale) noexcept;
+bool	Style_StrGetFontSize(LPCWSTR lpszStyle, int *size) noexcept;
+bool	Style_StrGetSize(LPCWSTR lpszStyle, int *size) noexcept;
+bool	Style_StrGetFontWeight(LPCWSTR lpszStyle, int *weight) noexcept;
+bool	Style_StrGetColor(bool bFore, LPCWSTR lpszStyle, COLORREF *rgb) noexcept;
 
-NP2_inline BOOL Style_StrGetForeColor(LPCWSTR lpszStyle, COLORREF *rgb) {
-	return Style_StrGetColor(TRUE, lpszStyle, rgb);
+inline bool Style_StrGetForeColor(LPCWSTR lpszStyle, COLORREF *rgb) noexcept {
+	return Style_StrGetColor(true, lpszStyle, rgb);
 }
 
-NP2_inline BOOL Style_StrGetBackColor(LPCWSTR lpszStyle, COLORREF *rgb) {
-	return Style_StrGetColor(FALSE, lpszStyle, rgb);
+inline bool Style_StrGetBackColor(LPCWSTR lpszStyle, COLORREF *rgb) noexcept {
+	return Style_StrGetColor(false, lpszStyle, rgb);
 }
 
-BOOL	Style_StrGetAlphaEx(BOOL outline, LPCWSTR lpszStyle, int *alpha);
-NP2_inline BOOL Style_StrGetAlpha(LPCWSTR lpszStyle, int *alpha) {
-	return Style_StrGetAlphaEx(FALSE, lpszStyle, alpha);
+bool	Style_StrGetAlphaEx(bool outline, LPCWSTR lpszStyle, int *alpha) noexcept;
+inline bool Style_StrGetAlpha(LPCWSTR lpszStyle, int *alpha) noexcept {
+	return Style_StrGetAlphaEx(false, lpszStyle, alpha);
 }
 
-NP2_inline BOOL Style_StrGetOutlineAlpha(LPCWSTR lpszStyle, int *alpha) {
-	return Style_StrGetAlphaEx(TRUE, lpszStyle, alpha);
+inline bool Style_StrGetOutlineAlpha(LPCWSTR lpszStyle, int *alpha) noexcept {
+	return Style_StrGetAlphaEx(true, lpszStyle, alpha);
 }
 
-BOOL	Style_SelectFont(HWND hwnd, LPWSTR lpszStyle, int cchStyle, BOOL bDefaultStyle);
-BOOL	Style_SelectColor(HWND hwnd, BOOL bFore, LPWSTR lpszStyle, int cchStyle);
-void	Style_SetStyles(int iStyle, LPCWSTR lpszStyle);
+bool	Style_SelectFont(HWND hwnd, LPWSTR lpszStyle, int cchStyle, bool bDefaultStyle) noexcept;
+bool	Style_SelectColor(HWND hwnd, LPWSTR lpszStyle, int cchStyle, bool bFore) noexcept;
+void	Style_SetStyles(int iStyle, LPCWSTR lpszStyle) noexcept;
 
-int 	Style_GetLexerIconId(LPCEDITLEXER pLex, DWORD iconFlags);
-void	Style_ConfigDlg(HWND hwnd);
-void	Style_SelectLexerDlg(HWND hwnd, BOOL favorite);
-
-static inline BOOL IsFoldIndentationBased(int iLexer) {
-	return iLexer == SCLEX_NULL
-		|| iLexer == SCLEX_COFFEESCRIPT
-		|| iLexer == SCLEX_PYTHON
-		|| iLexer == SCLEX_YAML;
-}
-
-// Python like indentation based code folding that can use SC_IV_LOOKFORWARD
-static inline BOOL IsPythonLikeFolding(int iLexer) {
-	return iLexer == SCLEX_NULL
-		|| iLexer == SCLEX_COFFEESCRIPT
-		|| iLexer == SCLEX_PYTHON
-		|| iLexer == SCLEX_YAML;
-}
-
-static inline BOOL DidLexerHasLineComment(int iLexer) {
-	return !(iLexer == SCLEX_NULL
-		|| iLexer == SCLEX_DIFF
-		|| iLexer == SCLEX_MARKDOWN
-	);
-}
-
-static inline BOOL DidLexerHasBlockComment(int iLexer) {
-	return !(iLexer == SCLEX_NULL
-		|| iLexer == SCLEX_APDL
-		|| iLexer == SCLEX_AWK
-		|| iLexer == SCLEX_BASH
-		|| iLexer == SCLEX_BATCH
-		|| iLexer == SCLEX_CONF
-		|| iLexer == SCLEX_DIFF
-		|| iLexer == SCLEX_GN
-		|| iLexer == SCLEX_LLVM
-		|| iLexer == SCLEX_MAKEFILE
-		|| iLexer == SCLEX_PERL
-		|| iLexer == SCLEX_PROPERTIES
-		|| iLexer == SCLEX_PYTHON
-		|| iLexer == SCLEX_RUBY
-		|| iLexer == SCLEX_SMALI
-		|| iLexer == SCLEX_TEXINFO
-		|| iLexer == SCLEX_TOML
-		|| iLexer == SCLEX_VB
-		|| iLexer == SCLEX_VBSCRIPT
-		|| iLexer == SCLEX_VIM
-		|| iLexer == SCLEX_YAML
-	);
-}
+int 	Style_GetLexerIconId(LPCEDITLEXER pLex, DWORD iconFlags) noexcept;
+void	Style_ConfigDlg(HWND hwnd) noexcept;
+void	Style_SelectLexerDlg(HWND hwnd, bool favorite) noexcept;
+bool	SelectCSVOptionsDlg() noexcept;

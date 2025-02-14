@@ -5,20 +5,9 @@
 // Copyright 2017 by Neil Hodgson <neilh@scintilla.org>
 // The License.txt file describes the conditions under which this software may be distributed.
 
-#include <cstdlib>
-#include <cassert>
-
-#include <string_view>
-
 #include "ILexer.h"
 #include "Scintilla.h"
-#include "SciLexer.h"
 
-#include "PropSetSimple.h"
-#include "WordList.h"
-#include "LexAccessor.h"
-#include "Accessor.h"
-#include "LexerModule.h"
 #include "DefaultLexer.h"
 
 using namespace Lexilla;
@@ -62,7 +51,7 @@ const char * SCI_METHOD DefaultLexer::DescribeWordListSets() const noexcept {
 	return "";
 }
 
-Sci_Position SCI_METHOD DefaultLexer::WordListSet(int, bool, const char *) {
+Sci_Position SCI_METHOD DefaultLexer::WordListSet(int, int, const char *) {
 	return -1;
 }
 

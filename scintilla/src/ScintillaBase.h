@@ -10,6 +10,10 @@ namespace Scintilla::Internal {
 
 #define SCI_EnablePopupMenu	0
 
+// For most platforms (not Cocoa) all IME indicators are drawn in same colour,
+// blue, with different patterns.
+constexpr ColourRGBA colourIME(0x0, 0x0, 0xffU);
+
 class LexState;
 
 /**
@@ -30,12 +34,6 @@ protected:
 		idcmdDelete = 15,
 		idcmdSelectAll = 16
 #endif
-	};
-
-	enum class NotificationPosition {
-		None,
-		BottomRight,
-		Center,
 	};
 
 #if SCI_EnablePopupMenu
@@ -64,7 +62,7 @@ protected:
 	void CancelModes() noexcept override;
 	int KeyCommand(Scintilla::Message iMessage) override;
 
-	void AutoCompleteInsert(Sci::Position startPos, Sci::Position removeLen, const char *text, Sci::Position textLen);
+	void AutoCompleteInsert(Sci::Position startPos, Sci::Position removeLen, std::string_view text);
 	void AutoCompleteStart(Sci::Position lenEntered, const char *list);
 	void AutoCompleteCancel() noexcept;
 	void AutoCompleteMove(int delta);
@@ -72,6 +70,7 @@ protected:
 	int AutoCompleteGetCurrentText(char *buffer) const;
 	void AutoCompleteCharacterAdded(char ch);
 	void AutoCompleteCharacterDeleted();
+	void AutoCompleteNotifyCompleted(char ch, CompletionMethods completionMethod, Sci::Position firstPos, const char *text);
 	void AutoCompleteCompleted(char ch, Scintilla::CompletionMethods completionMethod);
 	void AutoCompleteMoveToCurrentWord();
 	void AutoCompleteSelection();
@@ -91,7 +90,6 @@ protected:
 	void RightButtonDownWithModifiers(Point pt, unsigned int curTime, Scintilla::KeyMod modifiers) override;
 
 	void NotifyStyleToNeeded(Sci::Position endStyleNeeded) override;
-	void NotifyLexerChanged(Document *doc, void *userData) override;
 
 public:
 	~ScintillaBase() override;

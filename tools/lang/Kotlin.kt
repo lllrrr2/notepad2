@@ -1,7 +1,7 @@
-// Kotlin 1.6 https://kotlinlang.org/docs/reference/
+// Kotlin 2.0 https://kotlinlang.org/docs/home.html
 
 //! Keywords		===========================================================
-// https://kotlinlang.org/docs/reference/keyword-reference.html
+// https://kotlinlang.org/docs/keyword-reference.html
 // Hard Keywords
 as
 break
@@ -21,13 +21,11 @@ when while
 // Soft Keywords
 by
 catch constructor
-delegate dynamic
-field file finally
+dynamic
+finally
 get
 import init
-param property
-receiver
-set setparam
+set
 value
 where
 
@@ -51,11 +49,23 @@ sealed suspend
 tailrec
 vararg
 
+//! annotation		===========================================================
+// https://kotlinlang.org/docs/annotations.html#annotation-use-site-targets
+@delegate
+@field
+@file
+@get
+@param
+@property
+@receiver
+@set
+@setparam
+
 //! Library			===========================================================
 // Kotlin Standard Library
-// https://kotlinlang.org/api/latest/jvm/stdlib/index.html
+// https://kotlinlang.org/api/latest/jvm/stdlib/
 // Basic Types
-// https://kotlinlang.org/docs/reference/basic-types.html
+// https://kotlinlang.org/docs/basic-types.html
 
 package kotlin {
 	// Types
@@ -190,7 +200,7 @@ package kotlin.text {
 }
 
 //! KDoc			===========================================================
-// https://kotlinlang.org/docs/reference/kotlin-doc.html
+// https://kotlinlang.org/docs/kotlin-doc.html
 /**
  * @param <name>
  * @return

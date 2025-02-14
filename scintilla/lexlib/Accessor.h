@@ -13,16 +13,21 @@ enum {
 };
 
 class Accessor;
-class WordList;
 class PropSetSimple;
 
 typedef bool (*PFNIsCommentLeader)(Accessor &styler, Sci_Position pos, Sci_Position len);
 
 class Accessor final : public LexAccessor {
-	const PropSetSimple * const pprops;
+	const PropSetSimple &props;
 public:
-	Accessor(Scintilla::IDocument *pAccess_, const PropSetSimple *pprops_) noexcept;
+	Accessor(Scintilla::IDocument *pAccess_, const PropSetSimple &props_) noexcept;
+	const char *GetProperty(const char *key, size_t keyLen) const;
 	int GetPropertyInt(const char *key, size_t keyLen, int defaultValue = 0) const;
+
+	template <size_t N>
+	const char *GetProperty(const char (&key)[N]) const {
+		return GetProperty(key, N - 1);
+	}
 
 	template <size_t N>
 	int GetPropertyInt(const char (&key)[N], int defaultValue = 0) const {

@@ -17,13 +17,11 @@
 #include <string_view>
 #include <vector>
 #include <map>
-#include <set>
 #include <optional>
 #include <algorithm>
 #include <memory>
 
-#include <windows.h>
-
+#include "ParallelSupport.h"
 #include "ScintillaTypes.h"
 #include "ILoader.h"
 #include "ILexer.h"
@@ -60,17 +58,20 @@ using namespace Scintilla::Internal;
 Caret::Caret() noexcept :
 	active(false), on(false), period(500) {}
 
-EditModel::EditModel() : durationWrapOneUnit(0.01 / 64), durationWrapOneThread(0.01 / 16) {
+EditModel::EditModel() :
+	reprs{std::make_unique<SpecialRepresentations>()},
+	pcs{ContractionStateCreate(false)},
+	durationWrapOneUnit(0.01 / 64), durationWrapOneThread(0.01 / 16) {
 	inOverstrike = false;
 	trackLineWidth = false;
+	hasFocus = false;
+	primarySelection = true;
 	xOffset = 0;
 	posDrag = SelectionPosition(Sci::invalidPosition);
 	braces[0] = Sci::invalidPosition;
 	braces[1] = Sci::invalidPosition;
 	bracesMatchStyle = StyleBraceBad;
 	highlightGuideColumn = 0;
-	hasFocus = false;
-	primarySelection = true;
 	imeInteraction = IMEInteraction::Windowed;
 	bidirectional = Bidirectional::Disabled;
 	foldFlags = FoldFlag::None;
@@ -82,12 +83,12 @@ EditModel::EditModel() : durationWrapOneUnit(0.01 / 64), durationWrapOneThread(0
 	// before setting a lexer, style buffer is useless.
 	pdoc = new Document(DocumentOption::StylesNone);
 	pdoc->AddRef();
-	pcs = ContractionStateCreate(pdoc->IsLarge());
 
 	SYSTEM_INFO info;
 	GetNativeSystemInfo(&info);
 	hardwareConcurrency = info.dwNumberOfProcessors;
 	idleTaskTimer = CreateWaitableTimer(nullptr, true, nullptr);
+	SetIdleTaskTime(IdleLineWrapTime);
 	UpdateParallelLayoutThreshold();
 }
 
@@ -103,7 +104,7 @@ bool EditModel::BidirectionalEnabled() const noexcept {
 }
 
 SurfaceMode EditModel::CurrentSurfaceMode() const noexcept {
-	return { pdoc->dbcsCodePage, BidirectionalR2L() };
+	return { pdoc->dbcsCodePage/*, BidirectionalR2L()*/ };
 }
 
 void EditModel::SetDefaultFoldDisplayText(const char *text) {
@@ -132,6 +133,10 @@ InSelection EditModel::LineEndInSelection(Sci::Line lineDoc) const noexcept {
 	return sel.InSelectionForEOL(posAfterLineEnd);
 }
 
+MarkerMask EditModel::GetMark(Sci::Line line) const noexcept {
+	return pdoc->GetMark(line, FlagSet(changeHistoryOption, ChangeHistoryOption::Markers));
+}
+
 void EditModel::SetIdleTaskTime(uint32_t milliseconds) const noexcept {
 	LARGE_INTEGER dueTime;
 	dueTime.QuadPart = -INT64_C(10*1000)*milliseconds; // convert to 100ns
@@ -139,7 +144,7 @@ void EditModel::SetIdleTaskTime(uint32_t milliseconds) const noexcept {
 }
 
 bool EditModel::IdleTaskTimeExpired() const noexcept {
-	return WaitForSingleObject(idleTaskTimer, 0) == WAIT_OBJECT_0;
+	return WaitableTimerExpired(idleTaskTimer);
 }
 
 void EditModel::UpdateParallelLayoutThreshold() noexcept {

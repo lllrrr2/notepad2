@@ -7,6 +7,7 @@
 
 #include <cstddef>
 #include <cstdlib>
+#include <cstdint>
 #include <cassert>
 #include <cstring>
 #include <cstdio>
@@ -21,7 +22,6 @@
 #include <memory>
 
 #include "ScintillaTypes.h"
-#include "ScintillaMessages.h"
 
 #include "Debugging.h"
 #include "Geometry.h"
@@ -35,6 +35,22 @@ using namespace Scintilla::Internal;
 
 size_t Chunk::Length() const noexcept {
 	return end - start;
+}
+
+namespace {
+
+#ifdef __APPLE__
+// Archaic macOS colours for the default: black on light yellow
+constexpr ColourRGBA colourTextAndArrow(black);
+constexpr ColourRGBA colourBackground(0xff, 0xff, 0xc6);
+#else
+// Grey on white
+constexpr ColourRGBA colourTextAndArrow(0x80, 0x80, 0x80);
+constexpr ColourRGBA colourBackground(white);
+#endif
+
+constexpr ColourRGBA silver(0xc0, 0xc0, 0xc0);
+
 }
 
 CallTip::CallTip() noexcept {
@@ -57,17 +73,11 @@ CallTip::CallTip() noexcept {
 	innerMarginX = 12;
 	innerMarginY = 10;
 
-#ifdef __APPLE__
-	// proper apple colours for the default
-	colourBG = ColourRGBA(0xff, 0xff, 0xc6);
-	colourUnSel = ColourRGBA(0, 0, 0);
-#else
-	colourBG = ColourRGBA(0xff, 0xff, 0xff);
-	colourUnSel = ColourRGBA(0x80, 0x80, 0x80);
-#endif
+	colourBG = colourBackground;
+	colourUnSel = colourTextAndArrow;
 	colourSel = ColourRGBA(0, 0, 0x80);
-	colourShade = ColourRGBA(0, 0, 0);
-	colourLight = ColourRGBA(0xc0, 0xc0, 0xc0);
+	colourShade = black;
+	colourLight = silver;
 	clickPlace = 0;
 }
 
@@ -222,7 +232,8 @@ int CallTip::PaintContents(Surface *surfaceWindow, bool draw) {
 		chunkHighlight.start -= lineStart;
 		chunkHighlight.end -= lineStart;
 
-		rcClient.top = static_cast<XYPOSITION>(ytext - ascent - 1);
+		const int top = ytext - ascent - 1;
+		rcClient.top = top;
 
 		int x = offsetText;     // start each line at this inset
 
@@ -278,13 +289,13 @@ void CallTip::MouseClick(Point pt) noexcept {
 }
 
 PRectangle CallTip::CallTipStart(Sci::Position pos, Point pt, int textHeight, const char *defn,
-	Surface *surfaceMeasure, std::shared_ptr<Font> font_) {
+	Surface *surfaceMeasure, const std::shared_ptr<Font> &font_) {
 	clickPlace = 0;
 	val = defn;
 	highlight = Chunk();
 	inCallTipMode = true;
 	posStartCallTip = pos;
-	font = std::move(font_);
+	font = font_;
 	// Look for multiple lines in the text
 	// Only support \n here - simply means container must avoid \r!
 	const int numLines = 1 + static_cast<int>(std::count(val.begin(), val.end(), '\n'));
@@ -312,7 +323,8 @@ PRectangle CallTip::CallTipStart(Sci::Position pos, Point pt, int textHeight, co
 void CallTip::CallTipCancel() noexcept {
 	inCallTipMode = false;
 	if (wCallTip.Created()) {
-		wCallTip.Destroy();
+		//wCallTip.Destroy();
+		wCallTip.Show(false);
 	}
 }
 

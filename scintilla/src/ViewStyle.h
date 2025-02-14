@@ -16,10 +16,13 @@ public:
 	ColourRGBA back;
 	int width;
 	MarkerMask mask;
-	bool sensitive;
-	Scintilla::CursorShape cursor;
-	MarginStyle(Scintilla::MarginType style_ = Scintilla::MarginType::Symbol, int width_ = 0, MarkerMask mask_ = 0) noexcept;
-	bool ShowsFolding() const noexcept;
+	bool sensitive = false;
+	Scintilla::CursorShape cursor = Scintilla::CursorShape::ReverseArrow;
+	constexpr MarginStyle(Scintilla::MarginType style_ = Scintilla::MarginType::Symbol, int width_ = 0, MarkerMask mask_ = 0) noexcept:
+		style(style_), width(width_), mask(mask_) {}
+	constexpr bool ShowsFolding() const noexcept {
+		return (mask & Scintilla::MaskFolders) != 0;
+	}
 };
 
 /**
@@ -32,6 +35,7 @@ public:
 };
 
 using FontMap = std::map<FontSpecification, std::unique_ptr<FontRealised>>;
+using ColourOptional = std::optional<ColourRGBA>;
 
 constexpr int GetFontSizeZoomed(int size, int zoomLevel) noexcept {
 	size = (size * zoomLevel + 50) / 100;
@@ -39,7 +43,7 @@ constexpr int GetFontSizeZoomed(int size, int zoomLevel) noexcept {
 	return std::max(size, Scintilla::FontSizeMultiplier);
 }
 
-constexpr std::optional<ColourRGBA> OptionalColour(uptr_t wParam, sptr_t lParam) {
+constexpr ColourOptional OptionalColour(uptr_t wParam, sptr_t lParam) {
 	if (wParam) {
 		return ColourRGBA::FromIpRGB(lParam);
 	}
@@ -49,6 +53,8 @@ constexpr std::optional<ColourRGBA> OptionalColour(uptr_t wParam, sptr_t lParam)
 struct SelectionAppearance {
 	// Whether to draw on base layer or over text
 	Scintilla::Layer layer = Layer::Base;
+	// Is the selection visible?
+	bool visible = true;
 	// Draw selection past line end characters up to right border
 	bool eolFilled = false;
 	int eolSelectedWidth = 100;
@@ -133,8 +139,8 @@ public:
 	XYPOSITION controlCharWidth;
 	ColourRGBA selbar;
 	ColourRGBA selbarlight;
-	std::optional<ColourRGBA> foldmarginColour;
-	std::optional<ColourRGBA> foldmarginHighlightColour;
+	ColourOptional foldmarginColour;
+	ColourOptional foldmarginHighlightColour;
 	bool hotspotUnderline;
 	bool marginInside;	///< true: margin included in text view, false: separate views
 	/// Margins are ordered: Line Numbers, Selection Margin, Spacing Margin
@@ -142,6 +148,7 @@ public:
 	int rightMarginWidth;	///< Spacing margin on right of text
 	MarkerMask maskInLine = 0;	///< Mask for markers to be put into text because there is nowhere for them to go in margin
 	MarkerMask maskDrawInText = 0;///< Mask for markers that always draw in text
+	MarkerMask maskDrawWrapped = 0;	///< Mask for markers that draw on wrapped lines
 	std::vector<MarginStyle> ms;
 	int fixedColumnWidth = 0;	///< Total width of margins
 	int textStart;	///< Starting x position of text within the view
@@ -179,10 +186,12 @@ public:
 	int marginNumberPadding; // the right-side padding of the number margin
 	int ctrlCharPadding; // the padding around control character text blobs
 	int lastSegItalicsOffset; // the offset so as not to clip italic characters at EOLs
+	int autocStyle;
 
-	using ElementMap = std::map<Scintilla::Element, std::optional<ColourRGBA>>;
-	ElementMap elementColours;
-	ElementMap elementBaseColours;
+	uint32_t elementColoursMask;
+	uint32_t elementBaseColoursMask;
+	std::vector<ColourRGBA> elementColours;
+	std::vector<ColourRGBA> elementBaseColours;
 
 	WrapAppearance wrap;
 
@@ -211,24 +220,25 @@ public:
 	bool ValidStyle(size_t styleIndex) const noexcept;
 	void CalcLargestMarkerHeight() noexcept;
 	int GetFrameWidth() const noexcept;
-	bool IsLineFrameOpaque(bool caretActive, bool lineContainsCaret) const;
-	std::optional<ColourRGBA> Background(MarkerMask marksOfLine, bool caretActive, bool lineContainsCaret) const;
-	bool SelectionTextDrawn() const;
+	bool IsLineFrameOpaque(bool caretActive, bool lineContainsCaret) const noexcept;
+	ColourOptional Background(MarkerMask marksOfLine, bool caretActive, bool lineContainsCaret) const noexcept;
+	bool SelectionTextDrawn() const noexcept;
 	bool SelectionBackgroundDrawn() const noexcept;
-	bool WhitespaceBackgroundDrawn() const;
-	ColourRGBA WrapColour() const;
+	bool WhitespaceBackgroundDrawn() const noexcept;
+	ColourRGBA WrapColour() const noexcept;
 
 	void AddMultiEdge(int column, ColourRGBA colour);
 
-	std::optional<ColourRGBA> ElementColour(Scintilla::Element element) const;
+	ColourOptional ElementColour(Scintilla::Element element) const noexcept;
+	ColourRGBA ElementColourForced(Scintilla::Element element) const noexcept;
 	static constexpr bool ElementAllowsTranslucent(Scintilla::Element element) noexcept {
 		return (element >= Scintilla::Element::SelectionText && element <= Scintilla::Element::WhiteSpace)
 			|| element == Scintilla::Element::HotSpotActive;
 	}
-	bool ResetElement(Scintilla::Element element);
-	bool SetElementColour(Scintilla::Element element, ColourRGBA colour);
-	bool ElementIsSet(Scintilla::Element element) const;
-	bool SetElementBase(Scintilla::Element element, ColourRGBA colour);
+	bool ResetElement(Scintilla::Element element) noexcept;
+	bool SetElementColour(Scintilla::Element element, ColourRGBA colour) noexcept;
+	bool ElementIsSet(Scintilla::Element element) const noexcept;
+	bool SetElementBase(Scintilla::Element element, ColourRGBA colour) noexcept;
 
 	bool SetWrapState(Scintilla::Wrap wrapState_) noexcept;
 	bool SetWrapVisualFlags(Scintilla::WrapVisualFlag wrapVisualFlags_) noexcept;
@@ -248,6 +258,8 @@ public:
 	bool ZoomOut() noexcept;
 
 private:
+	XYPOSITION maxFontAscent;
+	XYPOSITION maxFontDescent;
 	void CreateAndAddFont(const FontSpecification &fs);
 	FontRealised *Find(const FontSpecification &fs) const;
 	void FindMaxAscentDescent() noexcept;

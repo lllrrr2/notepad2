@@ -41,7 +41,7 @@ constexpr bool IsANumberChar(int ch) noexcept {
 	return IsHexDigit(ch) || ch == 'E' || ch == 'e' || ch == '.' || ch == '-' || ch == '+';
 }
 
-void ColouriseTCLDoc(Sci_PositionU startPos, Sci_Position length, int, LexerWordList keywordLists, Accessor &styler) {
+void ColouriseTCLDoc(Sci_PositionU startPos, Sci_Position length, int /*initStyle*/, LexerWordList keywordLists, Accessor &styler) {
 #define  isComment(s) ((s) == SCE_TCL_COMMENT || (s) == SCE_TCL_COMMENTLINE || (s) == SCE_TCL_COMMENT_BOX || (s) == SCE_TCL_BLOCK_COMMENT)
 	bool commentLevel = false;
 	bool subBrace = false; // substitution begin with a brace ${.....}
@@ -66,15 +66,15 @@ void ColouriseTCLDoc(Sci_PositionU startPos, Sci_Position length, int, LexerWord
 	// make sure lines overlap
 	startPos = styler.LineStart(currentLine);
 
-	const WordList &keywords = *keywordLists[0];
-	const WordList &keywords2 = *keywordLists[1];
-	const WordList &keywords3 = *keywordLists[2];
-	const WordList &keywords4 = *keywordLists[3];
-	const WordList &keywords5 = *keywordLists[4];
-	const WordList &keywords6 = *keywordLists[5];
-	const WordList &keywords7 = *keywordLists[6];
-	const WordList &keywords8 = *keywordLists[7];
-	const WordList &keywords9 = *keywordLists[8];
+	const WordList &keywords = keywordLists[0];
+	const WordList &keywords2 = keywordLists[1];
+	const WordList &keywords3 = keywordLists[2];
+	const WordList &keywords4 = keywordLists[3];
+	const WordList &keywords5 = keywordLists[4];
+	const WordList &keywords6 = keywordLists[5];
+	const WordList &keywords7 = keywordLists[6];
+	const WordList &keywords8 = keywordLists[7];
+	const WordList &keywords9 = keywordLists[8];
 
 	if (currentLine > 0) {
 		const Sci_Position ls = styler.GetLineState(currentLine - 1);
@@ -152,9 +152,9 @@ void ColouriseTCLDoc(Sci_PositionU startPos, Sci_Position length, int, LexerWord
 		} else if (isComment(sc.state)) {
 		} else if (!IsAWordChar(sc.ch)) {
 			if ((sc.state == SCE_TCL_IDENTIFIER && expected) || sc.state == SCE_TCL_MODIFIER) {
-				char w[100];
+				char w[64];
 				sc.GetCurrent(w, sizeof(w));
-				size_t len = strlen(w);
+				size_t len = sci::min<size_t>(sizeof(w) - 1, sc.LengthCurrent());
 				char *s = w + len - 1;
 				if (*s == '\r') {
 					*s = '\0';
@@ -197,7 +197,6 @@ void ColouriseTCLDoc(Sci_PositionU startPos, Sci_Position length, int, LexerWord
 
 		if (sc.atLineEnd) {
 			lineState = LS_DEFAULT;
-			currentLine = styler.GetLine(sc.currentPos);
 			if (sc.state != SCE_TCL_COMMENT && isComment(sc.state)) {
 				if (currentLevel == 0) {
 					++currentLevel;
@@ -213,7 +212,7 @@ void ColouriseTCLDoc(Sci_PositionU startPos, Sci_Position length, int, LexerWord
 			int flag = 0;
 			if (currentLevel > previousLevel)
 				flag = SC_FOLDLEVELHEADERFLAG;
-			styler.SetLevel(currentLine, flag + previousLevel + SC_FOLDLEVELBASE + (currentLevel << 17) + (commentLevel << 16));
+			styler.SetLevel(sc.currentLine, flag + previousLevel + SC_FOLDLEVELBASE + (currentLevel << 17) + (commentLevel << 16));
 
 			// Update the line state, so it can be seen by next line
 			if (sc.state == SCE_TCL_IN_QUOTE) {
@@ -225,7 +224,7 @@ void ColouriseTCLDoc(Sci_PositionU startPos, Sci_Position length, int, LexerWord
 				} else if (sc.state == SCE_TCL_COMMENT_BOX)
 					lineState = LS_COMMENT_BOX;
 			}
-			styler.SetLineState(currentLine,
+			styler.SetLineState(sc.currentLine,
 				(subBrace ? LS_BRACE_ONLY : 0) |
 				(expected ? LS_COMMAND_EXPECTED : 0) | lineState);
 			if (lineState == LS_COMMENT_BOX)
@@ -334,7 +333,9 @@ void ColouriseTCLDoc(Sci_PositionU startPos, Sci_Position length, int, LexerWord
 				case '}':
 					sc.SetState(SCE_TCL_OPERATOR);
 					expected = true;
-					--currentLevel;
+					if (currentLevel > 0) {
+						--currentLevel;
+					}
 					break;
 				case '[':
 					expected = true;
@@ -396,4 +397,4 @@ void ColouriseTCLDoc(Sci_PositionU startPos, Sci_Position length, int, LexerWord
 
 }
 
-LexerModule lmTCL(SCLEX_TCL, ColouriseTCLDoc, "tcl");
+extern const LexerModule lmTCL(SCLEX_TCL, ColouriseTCLDoc, "tcl");

@@ -1,9 +1,9 @@
-// 4.3 https://www.typescriptlang.org/docs/
+// 5.6 https://www.typescriptlang.org/docs/
 // 1.8 https://github.com/microsoft/TypeScript/blob/main/doc/
 
 //! keywords		===========================================================
-// https://github.com/microsoft/TypeScript/tree/main/src/compiler/scanner.ts
-abstract as asserts async await
+// textToKeywordObj https://github.com/microsoft/TypeScript/tree/main/src/compiler/scanner.ts
+abstract accessor as assert asserts async await
 break
 case catch class const constructor continue
 debugger declare default delete do
@@ -14,12 +14,12 @@ if implements in infer instanceof interface intrinsic is
 keyof
 let
 new null
-of override
+of out override
 package private protected public
 readonly return
-set static super switch
+satisfies set static super switch
 this throw true try type typeof
-undefined unique
+undefined unique using
 var
 while with
 yield
@@ -40,7 +40,7 @@ any bigint boolean never number object string symbol unknown void
 
 //! TSDoc			===========================================================
 // https://www.typescriptlang.org/docs/handbook/triple-slash-directives.html
-/// <reference path="" />
+/// <reference path="" preserve="true" />
 /// <reference types="" />
 /// <reference lib="" />
 /// <reference no-default-lib="true" />

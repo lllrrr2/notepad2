@@ -1,4 +1,4 @@
-// This file is part of Notepad2.
+// This file is part of Notepad4.
 // See License.txt for details about distribution and modification.
 //! Lexer for Matlab, Octave, Scilab and Gnuplot (treated as same as Octave).
 
@@ -24,9 +24,9 @@ using namespace Lexilla;
 
 namespace {
 
-#define	LEX_MATLAB		40
-#define	LEX_OCTAVE		61
-#define	LEX_SCILAB		62
+#define	LEX_MATLAB		0
+#define	LEX_OCTAVE		1
+#define	LEX_SCILAB		2
 
 constexpr bool IsMatlabOctave(int lexType) noexcept {
 	return lexType == LEX_MATLAB || lexType == LEX_OCTAVE;
@@ -74,30 +74,31 @@ bool IsNestedCommentStart(int lexType, StyleContext &sc, int visibleChars) noexc
 	return IsNestedCommentStart(lexType, sc.ch, sc.chNext, visibleChars, sc.styler, sc.currentPos);
 }
 
-constexpr bool IsMatOperator(int ch) noexcept {
-	return isoperator(ch) || ch == '@' || ch == '\\' || ch == '$';
-}
-
 constexpr bool IsInvalidFileName(int ch) noexcept {
 	return isspacechar(ch) || ch == '<' || ch == '>' || ch == '/' || ch == '\\' || ch == '\'' || ch == '\"'
 		|| ch == '|' || ch == '*' || ch == '?';
 }
 
 void ColouriseMatlabDoc(Sci_PositionU startPos, Sci_Position length, int initStyle, LexerWordList keywordLists, Accessor &styler) {
-	const WordList &keywords = *keywordLists[0];
-	const WordList &attributes = *keywordLists[1];
-	const WordList &commands = *keywordLists[2];
-	const WordList &function1 = *keywordLists[3];
-	const WordList &function2 = *keywordLists[4];
+	const WordList &keywords = keywordLists[0];
+	const WordList &attributes = keywordLists[1];
+	const WordList &commands = keywordLists[2];
+	const WordList &function1 = keywordLists[3];
+	const WordList &function2 = keywordLists[4];
 
 	const int lexType = styler.GetPropertyInt("lexer.lang", LEX_MATLAB);
 
-	int visibleChars = 0;
 	StyleContext sc(startPos, length, initStyle, styler);
-	int commentLevel = (sc.currentLine > 0) ? styler.GetLineState(sc.currentLine - 1) : 0;
+	int visibleChars = 0;
+	int commentLevel = 0;
+	bool lineContinuation = false;
 	bool isTransposeOperator = false;
-
 	bool hasTest = false; // Octave test/demo: %!demo %!test %testif %!assert %!error %!fail %!share %!function
+	if (sc.currentLine > 0) {
+		const int lineState = styler.GetLineState(sc.currentLine - 1);
+		lineContinuation = lineState & true;
+		commentLevel = lineState >> 1;
+	}
 
 	for (; sc.More(); sc.Forward()) {
 		switch (sc.state) {
@@ -105,26 +106,13 @@ void ColouriseMatlabDoc(Sci_PositionU startPos, Sci_Position length, int initSty
 			sc.SetState(SCE_MAT_DEFAULT);
 			break;
 		case SCE_MAT_NUMBER:
-			if (!IsADigit(sc.ch)) {
-				if (IsFloatExponent(sc.ch, sc.chNext)) {
-					sc.Forward();
-				} else if (!(sc.ch == '.' && sc.chPrev != '.')) {
-					if (sc.ch == 'i' || sc.ch == 'j' || sc.ch == 'I' || sc.ch == 'J') {
-						// complex, 'I','J' in Octave
-						sc.Forward();
-					}
-					sc.SetState(SCE_MAT_DEFAULT);
-				}
-			}
-			break;
-		case SCE_MAT_HEXNUM:
-			if (!IsHexDigit(sc.ch)) {
+			if (!IsDecimalNumber(sc.chPrev, sc.ch, sc.chNext)) {
 				sc.SetState(SCE_MAT_DEFAULT);
 			}
 			break;
 		case SCE_MAT_IDENTIFIER:
 			if (!IsIdentifierChar(sc.ch)) {
-				char s[128];	// Matlab max indentifer length = 63, Octave unlimited
+				char s[64];	// Matlab max indentifer length = 63, Octave unlimited
 				sc.GetCurrent(s, sizeof(s));
 
 				if (keywords.InList(s)) {
@@ -166,34 +154,38 @@ void ColouriseMatlabDoc(Sci_PositionU startPos, Sci_Position length, int initSty
 			}
 			break;
 		case SCE_MAT_STRING:
-			if (sc.ch == '\'') {
-				if (sc.chNext == '\'') {
-					sc.Forward();
-				} else {
-					sc.ForwardSetState(SCE_MAT_DEFAULT);
+			if (sc.atLineStart) {
+				sc.SetState(SCE_MAT_DEFAULT);
+			} else if (sc.ch == '\'') {
+				sc.Forward();
+				if (sc.ch != '\'') {
+					sc.SetState(SCE_MAT_DEFAULT);
 				}
 			}
 			break;
 		case SCE_MAT_DOUBLEQUOTESTRING:
-			if (sc.ch == '\\' && lexType != LEX_MATLAB) {
-				if (sc.chNext == '\"' || sc.chNext == '\'' || sc.chNext == '\\') {
-					sc.Forward();
+			if (sc.atLineStart) {
+				if (lineContinuation) {
+					lineContinuation = false;
+				} else {
+					sc.SetState(SCE_MAT_DEFAULT);
+				}
+			} else if (sc.ch == '\\' && lexType != LEX_MATLAB) {
+				sc.Forward();
+				if (sc.MatchLineEnd()) {
+					lineContinuation = true;
 				}
 			} else if (sc.ch == '\"') {
-				if (sc.chNext == '\"') {
-					sc.Forward();
-				} else {
-					sc.ForwardSetState(SCE_MAT_DEFAULT);
+				sc.Forward();
+				if (sc.ch != '\"') {
+					sc.SetState(SCE_MAT_DEFAULT);
 				}
 			}
 			break;
 		case SCE_MAT_COMMENTBLOCK:
 			if (IsBlockCommentEnd(lexType, sc, visibleChars)) {
-				if (IsMatlabOctave(lexType)) {
+				if (commentLevel > 0 && IsMatlabOctave(lexType)) {
 					--commentLevel;
-					if (commentLevel < 0) {
-						commentLevel = 0;
-					}
 				}
 				if (commentLevel == 0) {
 					sc.Forward();
@@ -252,10 +244,6 @@ void ColouriseMatlabDoc(Sci_PositionU startPos, Sci_Position length, int initSty
 				sc.SetState(SCE_MAT_STRING);
 			} else if (sc.ch == '\"') {
 				sc.SetState(SCE_MAT_DOUBLEQUOTESTRING);
-			} else if (sc.ch == '0' && (sc.chNext == 'x' || sc.chNext == 'X')) {
-				isTransposeOperator = true;
-				sc.SetState(SCE_MAT_HEXNUM);
-				sc.Forward();
 			} else if (IsNumberStart(sc.ch, sc.chNext)) {
 				isTransposeOperator = true;
 				sc.SetState(SCE_MAT_NUMBER);
@@ -265,7 +253,7 @@ void ColouriseMatlabDoc(Sci_PositionU startPos, Sci_Position length, int initSty
 			} else if (IsIdentifierStart(sc.ch)) {
 				isTransposeOperator = true;
 				sc.SetState(SCE_MAT_IDENTIFIER);
-			} else if (IsMatOperator(sc.ch)) {
+			} else if (IsAGraphic(sc.ch)) {
 				sc.SetState(SCE_MAT_OPERATOR);
 				isTransposeOperator = sc.ch == ')' || sc.ch == ']' || sc.ch == '}' || sc.ch == '.';
 			}
@@ -275,7 +263,8 @@ void ColouriseMatlabDoc(Sci_PositionU startPos, Sci_Position length, int initSty
 			visibleChars++;
 		}
 		if (sc.atLineEnd) {
-			styler.SetLineState(sc.currentLine, commentLevel);
+			const int lineState = (commentLevel << 1) | static_cast<int>(lineContinuation);
+			styler.SetLineState(sc.currentLine, lineState);
 			visibleChars = 0;
 		}
 	}
@@ -295,7 +284,7 @@ constexpr bool IsStreamCommentStyle(int style) noexcept {
 
 #define IsCommentLine(line)		IsLexCommentLine(styler, line, SCE_MAT_COMMENT)
 
-void FoldMatlabDoc(Sci_PositionU startPos, Sci_Position length, int initStyle, LexerWordList, Accessor &styler) {
+void FoldMatlabDoc(Sci_PositionU startPos, Sci_Position length, int initStyle, LexerWordList /*keywordLists*/, Accessor &styler) {
 	const int lexType = styler.GetPropertyInt("lexer.lang", LEX_MATLAB);
 
 	const Sci_PositionU endPos = startPos + length;
@@ -390,13 +379,12 @@ void FoldMatlabDoc(Sci_PositionU startPos, Sci_Position length, int initStyle, L
 			visibleChars++;
 
 		if (atEOL || (i == endPos - 1)) {
+			levelNext = sci::max(levelNext, SC_FOLDLEVELBASE);
 			const int levelUse = levelCurrent;
-			int lev = levelUse | levelNext << 16;
+			int lev = levelUse | (levelNext << 16);
 			if (levelUse < levelNext)
 				lev |= SC_FOLDLEVELHEADERFLAG;
-			if (lev != styler.LevelAt(lineCurrent)) {
-				styler.SetLevel(lineCurrent, lev);
-			}
+			styler.SetLevel(lineCurrent, lev);
 			lineCurrent++;
 			levelCurrent = levelNext;
 			visibleChars = 0;
@@ -406,4 +394,4 @@ void FoldMatlabDoc(Sci_PositionU startPos, Sci_Position length, int initStyle, L
 
 }
 
-LexerModule lmMatlab(SCLEX_MATLAB, ColouriseMatlabDoc, "matlab", FoldMatlabDoc);
+extern const LexerModule lmMatlab(SCLEX_MATLAB, ColouriseMatlabDoc, "matlab", FoldMatlabDoc);

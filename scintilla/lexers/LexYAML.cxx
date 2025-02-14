@@ -1,4 +1,4 @@
-// This file is part of Notepad2.
+// This file is part of Notepad4.
 // See License.txt for details about distribution and modification.
 //! Lexer for YAML.
 
@@ -45,7 +45,7 @@ struct EscapeSequence {
 
 constexpr bool IsYAMLFlowIndicator(int ch) noexcept {
 	// c-flow-indicator
-	return ch == ',' || ch == '[' || ch == ']' || ch == '{' || ch == '}';
+	return ch == ',' || AnyOf<'[', ']', '{', '}'>(ch);
 }
 
 constexpr bool IsYAMLOperator(int ch, int braceCount) noexcept {
@@ -59,12 +59,7 @@ constexpr bool IsYAMLAnchorChar(int ch) noexcept {
 	return IsGraphic(ch) && !IsYAMLFlowIndicator(ch);
 }
 
-constexpr bool IsYAMLDateTime(int ch, int chNext) noexcept {
-	return ((ch == '-' || ch == ':' || ch == '.') && IsADigit(chNext))
-		|| (ch == ' ' && (chNext == '-' || IsADigit(chNext)));
-}
-
-bool IsYAMLText(StyleContext& sc, int braceCount, const WordList *kwList) {
+bool IsYAMLText(StyleContext &sc, int braceCount, LexerWordList keywordLists) {
 	const int state = sc.state;
 	const Sci_Position endPos = braceCount? sc.styler.Length() : sc.lineStartNext;
 	const unsigned char chNext = LexGetNextChar(sc.styler, sc.currentPos, endPos);
@@ -79,7 +74,7 @@ bool IsYAMLText(StyleContext& sc, int braceCount, const WordList *kwList) {
 		if (state == SCE_YAML_IDENTIFIER) {
 			char s[8];
 			sc.GetCurrentLowered(s, sizeof(s));
-			if (kwList->InList(s)) {
+			if (keywordLists[0].InList(s)) {
 				sc.ChangeState(SCE_YAML_KEYWORD);
 				sc.SetState(SCE_YAML_DEFAULT);
 			}
@@ -160,7 +155,7 @@ void ColouriseYAMLDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int initSt
 		const Sci_Line currentLine = styler.GetLine(startPos);
 		startPos = (currentLine == 0)? 0 : styler.LineStart(currentLine - 1);
 		lengthDoc = endPos - startPos;
-		initStyle = (startPos == 0)? SCE_YAML_DEFAULT : styler.StyleAt(startPos - 1);
+		initStyle = (startPos == 0)? SCE_YAML_DEFAULT : styler.StyleIndexAt(startPos - 1);
 	}
 
 	StyleContext sc(startPos, lengthDoc, initStyle, styler);
@@ -184,7 +179,7 @@ void ColouriseYAMLDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int initSt
 			indentEnded = false;
 			hasKey = false;
 
-			if (sc.state == SCE_YAML_BLOCK_SCALAR || (sc.state == SCE_YAML_TEXT && !braceCount) || sc.state == SCE_YAML_INDENTED_TEXT) {
+			if (sc.state == SCE_YAML_BLOCK_SCALAR || (sc.state == SCE_YAML_TEXT && braceCount == 0) || sc.state == SCE_YAML_INDENTED_TEXT) {
 				indentEnded = true;
 				if (IsYAMLTextBlockEnd(sc.state, indentCount, textIndentCount, sc.currentPos, sc.lineStartNext, styler)) {
 					textIndentCount = 0;
@@ -216,17 +211,17 @@ void ColouriseYAMLDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int initSt
 
 		case SCE_YAML_NUMBER:
 			if (!IsDecimalNumber(sc.chPrev, sc.ch, sc.chNext)) {
-				if (IsYAMLDateTime(sc.ch, sc.chNext)) {
+				if (IsISODateTime(sc.ch, sc.chNext)) {
 					sc.ChangeState(SCE_YAML_DATETIME);
-				} else if (IsYAMLText(sc, braceCount, nullptr)) {
+				} else if (IsYAMLText(sc, braceCount, keywordLists)) {
 					continue;
 				}
 			}
 			break;
 
 		case SCE_YAML_DATETIME:
-			if (!(IsIdentifierChar(sc.ch) || IsYAMLDateTime(sc.ch, sc.chNext))) {
-				 if (IsYAMLText(sc, braceCount, nullptr)) {
+			if (!(IsIdentifierChar(sc.ch) || IsISODateTime(sc.ch, sc.chNext))) {
+				 if (IsYAMLText(sc, braceCount, keywordLists)) {
 					continue;
 				}
 			}
@@ -234,7 +229,7 @@ void ColouriseYAMLDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int initSt
 
 		case SCE_YAML_IDENTIFIER:
 			if (!IsAlpha(sc.ch)) {
-				if (IsYAMLText(sc, braceCount, keywordLists[0])) {
+				if (IsYAMLText(sc, braceCount, keywordLists)) {
 					continue;
 				}
 			}
@@ -249,10 +244,8 @@ void ColouriseYAMLDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int initSt
 				}
 			} else if (braceCount && IsYAMLFlowIndicator(sc.ch)) {
 				sc.SetState(SCE_YAML_OPERATOR);
-				if (sc.ch == '{' || sc.ch == '[') {
-					++braceCount;
-				} else if (sc.ch == '}' || sc.ch == ']') {
-					--braceCount;
+				if (sc.ch != ',') {
+					braceCount += (('[' + ']')/2 + (sc.ch & 32)) - sc.ch;
 				}
 			} else if (sc.ch == '#' && isspacechar(sc.chPrev)) {
 				sc.SetState(SCE_YAML_COMMENT);
@@ -276,8 +269,15 @@ void ColouriseYAMLDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int initSt
 			break;
 
 		case SCE_YAML_STRING_SQ:
-			if (sc.ch == '\'') {
-				if (sc.chNext == '\'') {
+		case SCE_YAML_STRING_DQ:
+			if (sc.ch == '\\' && sc.state == SCE_YAML_STRING_DQ) {
+				if (!IsEOLChar(sc.chNext)) {
+					escSeq.resetEscapeState(sc.chNext);
+					sc.SetState(SCE_YAML_ESCAPECHAR);
+					sc.Forward();
+				}
+			} else if (sc.ch == ((sc.state == SCE_YAML_STRING_SQ) ? '\'' : '\"')) {
+				if (sc.chNext == '\'' && sc.state == SCE_YAML_STRING_SQ) {
 					sc.SetState(SCE_YAML_ESCAPECHAR);
 					sc.Advance(2);
 					sc.SetState(SCE_YAML_STRING_SQ);
@@ -285,22 +285,7 @@ void ColouriseYAMLDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int initSt
 				}
 
 				sc.Forward();
-				if (sc.GetDocNextChar() == ':') {
-					hasKey = true;
-					sc.ChangeState(SCE_YAML_KEY);
-				}
-				sc.SetState((sc.ch == ':')? SCE_YAML_OPERATOR : SCE_YAML_DEFAULT);
-			}
-			break;
-
-		case SCE_YAML_STRING_DQ:
-			if (sc.ch == '\\') {
-				escSeq.resetEscapeState(sc.chNext);
-				sc.SetState(SCE_YAML_ESCAPECHAR);
-				sc.Forward();
-			} else if (sc.ch == '\"') {
-				sc.Forward();
-				if (sc.GetDocNextChar() == ':') {
+				if (sc.GetLineNextChar() == ':') {
 					hasKey = true;
 					sc.ChangeState(SCE_YAML_KEY);
 				}
@@ -333,7 +318,7 @@ void ColouriseYAMLDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int initSt
 					indentCount = 0;
 					lineType = YAMLLineType::CommentLine;
 				}
-			} else if (sc.atLineStart && (sc.Match('-', '-', '-') || sc.Match('.', '.', '.'))) {
+			} else if (sc.atLineStart && (sc.ch == '-' || sc.ch == '.') && sc.MatchNext()) {
 				// reset document state
 				braceCount = 0;
 				visibleChars = 1;
@@ -374,10 +359,8 @@ void ColouriseYAMLDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int initSt
 				sc.SetState(SCE_YAML_IDENTIFIER);
 			} else if (IsYAMLOperator(sc.ch, braceCount) || (sc.ch == '?' && sc.chNext == ' ') || (sc.ch == ':' && isspacechar(sc.chNext))) {
 				sc.SetState(SCE_YAML_OPERATOR);
-				if (sc.ch == '{' || sc.ch == '[') {
-					++braceCount;
-				} else if (sc.ch == '}' || sc.ch == ']') {
-					--braceCount;
+				if (AnyOf<'[', ']', '{', '}'>(sc.ch)) {
+					braceCount += (('[' + ']')/2 + (sc.ch & 32)) - sc.ch;
 				}
 			} else if (sc.ch == '+' || sc.ch == '-' || sc.ch == '.') {
 				if ((sc.ch == '-' && isspacechar(sc.chNext))) {
@@ -415,7 +398,7 @@ void ColouriseYAMLDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int initSt
 			}
 		}
 		if (sc.atLineEnd) {
-			if (sc.state == SCE_YAML_TEXT && !braceCount) {
+			if (sc.state == SCE_YAML_TEXT && braceCount == 0) {
 				if (lineType == YAMLLineType::BlockSequence) {
 					textIndentCount = hasKey ? indentCount : indentBefore;
 					++textIndentCount;
@@ -457,7 +440,7 @@ struct FoldLineState {
 };
 
 // code folding based on LexNull
-void FoldYAMLDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int /*initStyle*/, LexerWordList, Accessor &styler) {
+void FoldYAMLDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int /*initStyle*/, LexerWordList /*keywordLists*/, Accessor &styler) {
 	const Sci_Position maxPos = startPos + lengthDoc;
 	const Sci_Line docLines = styler.GetLine(styler.Length());
 	const Sci_Line maxLines = (maxPos == styler.Length()) ? docLines : styler.GetLine(maxPos - 1);
@@ -535,4 +518,4 @@ void FoldYAMLDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int /*initStyle
 
 }
 
-LexerModule lmYAML(SCLEX_YAML, ColouriseYAMLDoc, "yaml", FoldYAMLDoc);
+extern const LexerModule lmYAML(SCLEX_YAML, ColouriseYAMLDoc, "yaml", FoldYAMLDoc);

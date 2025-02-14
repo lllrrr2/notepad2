@@ -1,6 +1,0 @@
-#define VERSION_MINOR 22
-#define VERSION_BUILD_NUM 3
-#define VERSION_BUILD 03
-#define VERSION_HASH TEXT("4ddfdb81")
-#define VERSION_REV 4130
-#define VERSION_REV_FULL TEXT("r4130 (4ddfdb81)")

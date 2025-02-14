@@ -24,15 +24,15 @@ class LexAccessor {
 		bufferSize = 4096,
 		slopSize = bufferSize / 8,
 	};
-	char buf[bufferSize + 1];
+	char buf[bufferSize + 4];
+	const EncodingType encodingType;
 	Sci_Position startPos = 0;
 	Sci_Position endPos = 0;
 	//const int codePage;
 	//const int documentVersion;
-	const EncodingType encodingType;
 	const Sci_Position lenDoc;
 	unsigned char styleBuf[bufferSize];
-	Sci_Position validLen = 0;
+	Sci_PositionU validLen = 0;
 	Sci_PositionU startSeg = 0;
 	Sci_Position startPosStyling = 0;
 
@@ -61,8 +61,10 @@ public:
 		encodingType(EncodingTypeForCodePage(pAccess->CodePage())),
 		lenDoc(pAccess->Length()) {
 		// Prevent warnings by static analyzers about uninitialized buf and styleBuf.
-		buf[0] = 0;
-		styleBuf[0] = 0;
+		// zero unused padding to prevent potential out of bounds bug.
+		memset(buf, 0, 4);
+		memset(buf + bufferSize, 0, 4);
+		memset(styleBuf, 0, 4);
 	}
 	char operator[](Sci_Position position) noexcept {
 		if (position < startPos || position >= endPos) {
@@ -93,10 +95,15 @@ public:
 			Fill(position);
 			if (position < startPos || position >= endPos) {
 				// Position is outside range of document
+				//! different from official Lexilla which returns space.
+				// returns zero is consistent of GetCharacterAndWidth() method.
 				return '\0';
 			}
 		}
 		return buf[position - startPos];
+	}
+	unsigned char SafeGetUCharAt(Sci_Position position) noexcept {
+		return SafeGetCharAt(position);
 	}
 #if 0
 	[[deprecated]]
@@ -110,6 +117,10 @@ public:
 		}
 		return buf[position - startPos];
 	}
+	[[deprecated]]
+	unsigned char SafeGetUCharAt(Sci_Position position, char chDefault) noexcept {
+		return SafeGetCharAt(position, chDefault);
+	}
 #endif
 	bool IsLeadByte(unsigned char ch) const noexcept {
 		return encodingType == EncodingType::dbcs && (ch & 0x80) != 0 && pAccess->IsDBCSLeadByte(ch);
@@ -118,38 +129,37 @@ public:
 		return encodingType;
 	}
 
-	bool MatchAny(Sci_Position pos, char ch0, char ch1) noexcept {
-		const char ch = SafeGetCharAt(pos);
-		return ch == ch0 || ch == ch1;
-	}
-
 	bool Match(Sci_Position pos, const char *s) noexcept {
 		for (; *s; s++, pos++) {
-			if (*s != SafeGetCharAt(pos)) {
+			if (*s != (*this)[pos]) {
 				return false;
 			}
 		}
 		return true;
 	}
 	bool MatchIgnoreCase(Sci_Position pos, const char *s) noexcept;
+	bool MatchLowerCase(Sci_Position pos, const char *s) noexcept;
 
 	// Get first len - 1 characters in range [startPos_, endPos_).
-	void GetRange(Sci_PositionU startPos_, Sci_PositionU endPos_, char *s, Sci_PositionU len) noexcept;
-	void GetRangeLowered(Sci_PositionU startPos_, Sci_PositionU endPos_, char *s, Sci_PositionU len) noexcept;
+	void GetRange(Sci_PositionU startPos_, Sci_PositionU endPos_, char *s, Sci_PositionU len) const noexcept;
+	void GetRangeLowered(Sci_PositionU startPos_, Sci_PositionU endPos_, char *s, Sci_PositionU len) const noexcept;
 	// Get all characters in range [startPos_, endPos_).
-	std::string GetRange(Sci_PositionU startPos_, Sci_PositionU endPos_);
-	std::string GetRangeLowered(Sci_PositionU startPos_, Sci_PositionU endPos_);
+	std::string GetRange(Sci_PositionU startPos_, Sci_PositionU endPos_) const;
+	std::string GetRangeLowered(Sci_PositionU startPos_, Sci_PositionU endPos_) const;
 
 	// Flush() must be called first when used in Colourise() or Lex() function.
 	unsigned char StyleAt(Sci_Position position) const noexcept {
+		return pAccess->StyleAt(position);
+	}
+	unsigned char StyleIndexAt(Sci_Position position) const noexcept {
 		return pAccess->StyleAt(position);
 	}
 	// only used in Colourise() or Lex() function, validLen is always zero in Fold() function.
 	// Return style value from buffer when in buffer, else retrieve from document.
 	// This is faster and can avoid calls to Flush() as that may be expensive.
 	unsigned char BufferStyleAt(Sci_Position position) const noexcept {
-		const Sci_Position index = position - startPosStyling;
-		if (index >= 0 && index < validLen) {
+		const Sci_PositionU index = position - startPosStyling;
+		if (index < validLen) {
 			return styleBuf[index];
 		}
 		return pAccess->StyleAt(position);
@@ -221,7 +231,7 @@ public:
 				pAccess->SetStyleFor(len, attr);
 			} else {
 				for (Sci_PositionU i = 0; i < len; i++) {
-					assert((startPosStyling + validLen) < Length());
+					assert((startPosStyling + validLen) < static_cast<Sci_PositionU>(Length()));
 					styleBuf[validLen++] = attr;
 				}
 			}
@@ -327,8 +337,21 @@ inline unsigned char LexGetNextChar(LexAccessor &styler, Sci_Position startPos, 
 	return '\0';
 }
 
+inline int GetMatchedDelimiterCount(LexAccessor &styler, Sci_PositionU pos, int delimiter) noexcept {
+	int count = 1;
+	while (true) {
+		const uint8_t ch = styler.SafeGetCharAt(++pos);
+		if (ch == delimiter) {
+			++count;
+		} else {
+			break;
+		}
+	}
+	return count;
+}
+
 void BacktrackToStart(const LexAccessor &styler, int stateMask, Sci_PositionU &startPos, Sci_Position &lengthDoc, int &initStyle) noexcept;
-Sci_PositionU LookbackNonWhite(LexAccessor &styler, Sci_PositionU startPos, int maxSpaceStyle, int &chPrevNonWhite, int &stylePrevNonWhite) noexcept;
+Sci_PositionU LookbackNonWhite(LexAccessor &styler, Sci_PositionU startPos, unsigned maxSpaceStyle, int &chPrevNonWhite, int &stylePrevNonWhite) noexcept;
 Sci_PositionU CheckBraceOnNextLine(LexAccessor &styler, Sci_Line line, int operatorStyle, int maxSpaceStyle, int ignoreStyle = 0) noexcept;
 
 }

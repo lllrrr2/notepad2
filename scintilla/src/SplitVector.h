@@ -18,15 +18,26 @@
 
 namespace Scintilla::Internal {
 
+constexpr bool InRangeInclusive(size_t index, size_t length) noexcept {
+	return index <= length;
+}
+
+constexpr bool InRangeExclusive(size_t index, size_t length) noexcept {
+	return index < length;
+}
+
+constexpr bool IsValidIndex(size_t index, size_t length) noexcept {
+	return index < length;
+}
+
 template <typename T>
 class SplitVector {
 protected:
 	std::vector<T> body;
-	T empty;	/// Returned as the result of out-of-bounds access.
-	ptrdiff_t lengthBody;
-	ptrdiff_t part1Length;
-	ptrdiff_t gapLength;	/// invariant: gapLength == body.size() - lengthBody
-	ptrdiff_t growSize;
+	ptrdiff_t lengthBody = 0;
+	ptrdiff_t part1Length = 0;
+	ptrdiff_t gapLength = 0;	/// invariant: gapLength == body.size() - lengthBody
+	size_t growSize;
 
 	/// Move the gap to a particular position so that insertion and
 	/// deletion at that point will not require much copying and
@@ -61,8 +72,8 @@ protected:
 	/// reallocating if more space needed.
 	void RoomFor(ptrdiff_t insertionLength) {
 		if (gapLength < insertionLength) {
-			const ptrdiff_t size = static_cast<ptrdiff_t>(body.size());
-			const ptrdiff_t upper = size / 6;
+			const size_t size = body.size();
+			const size_t upper = size / 6;
 			while (growSize < upper) {
 				growSize *= 2;
 			}
@@ -81,39 +92,25 @@ protected:
 
 public:
 	/// Construct a split buffer.
-	SplitVector() noexcept : empty(), lengthBody(0), part1Length(0), gapLength(0), growSize(8) {
-	}
+	SplitVector(size_t growSize_ = 8) noexcept : growSize{growSize_} {}
 
-	// Deleted so SplitVector objects can not be copied.
-	SplitVector(const SplitVector &) = delete;
-	SplitVector(SplitVector &&) = delete;
-	void operator=(const SplitVector &) = delete;
-	void operator=(SplitVector &&) = delete;
-
-	~SplitVector() = default;
-
-	ptrdiff_t GetGrowSize() const noexcept {
+	size_t GetGrowSize() const noexcept {
 		return growSize;
 	}
 
-	void SetGrowSize(ptrdiff_t growSize_) noexcept {
+	void SetGrowSize(size_t growSize_) noexcept {
 		growSize = growSize_;
 	}
 
 	/// Reallocate the storage for the buffer to be newSize and
 	/// copy existing contents to the new buffer.
 	/// Must not be used to decrease the size of the buffer.
-	void ReAllocate(ptrdiff_t newSize) {
-		if (newSize < 0)
-			throw std::runtime_error("SplitVector::ReAllocate: negative size.");
-
-		const ptrdiff_t size = static_cast<ptrdiff_t>(body.size());
+	void ReAllocate(size_t newSize) {
+		const size_t size = body.size();
 		if (newSize > size) {
 #if ENABLE_SHOW_DEBUG_INFO
-			printf("before %s(%td, %zu) part1Length=%td, gapLength=%td, lengthBody=%td, growSize=%td\n",
-				__func__, newSize, body.size(), part1Length, gapLength, lengthBody, growSize);
-			Platform::DebugPrintf("before %s(%td, %zu) part1Length=%td, gapLength=%td, lengthBody=%td, growSize=%td\n",
-				__func__, newSize, body.size(), part1Length, gapLength, lengthBody, growSize);
+			printf("before %s(%td, %zu) part1Length=%td, gapLength=%td, lengthBody=%td, growSize=%zu\n",
+				__func__, newSize, size, part1Length, gapLength, lengthBody, growSize);
 #endif
 			// Move the gap to the end
 			GapTo(lengthBody);
@@ -124,30 +121,32 @@ public:
 			body.reserve(newSize);
 			body.resize(newSize);
 #if ENABLE_SHOW_DEBUG_INFO
-			printf("after %s(%td, %zu) part1Length=%td, gapLength=%td, lengthBody=%td, growSize=%td\n",
-				__func__, newSize, body.size(), part1Length, gapLength, lengthBody, growSize);
-			Platform::DebugPrintf("after %s(%td, %zu) part1Length=%td, gapLength=%td, lengthBody=%td, growSize=%td\n",
-				__func__, newSize, body.size(), part1Length, gapLength, lengthBody, growSize);
+			printf("after %s(%td, %zu) part1Length=%td, gapLength=%td, lengthBody=%td, growSize=%zu\n",
+				__func__, newSize, size, part1Length, gapLength, lengthBody, growSize);
 #endif
 		}
 	}
 
 	/// Retrieve the element at a particular position.
 	/// Retrieving positions outside the range of the buffer returns empty or 0.
-	const T& ValueAt(ptrdiff_t position) const noexcept {
-		if (position < part1Length) {
-			if (position < 0) {
-				return empty;
-			} else {
-				return body[position];
-			}
-		} else {
-			if (position >= lengthBody) {
-				return empty;
-			} else {
-				return body[gapLength + position];
-			}
+	T ValueAt(ptrdiff_t position) const noexcept {
+		if (IsValidIndex(position, part1Length)) {
+			return body[position];
 		}
+		if (IsValidIndex(position, lengthBody)) {
+			return body[gapLength + position];
+		}
+		return {};
+	}
+
+	const T& ValueOr(ptrdiff_t position, const T& empty) const noexcept {
+		if (IsValidIndex(position, part1Length)) {
+			return body[position];
+		}
+		if (IsValidIndex(position, lengthBody)) {
+			return body[gapLength + position];
+		}
+		return empty;
 	}
 
 	/// Set the element at a particular position.
@@ -155,21 +154,35 @@ public:
 	/// but asserts in debug builds.
 	template <typename ParamType>
 	void SetValueAt(ptrdiff_t position, ParamType&& v) noexcept {
-		if (position < part1Length) {
-			PLATFORM_ASSERT(position >= 0);
-			if (position < 0) {
-				;
-			} else {
-				body[position] = std::forward<ParamType>(v);
-			}
-		} else {
-			PLATFORM_ASSERT(position < lengthBody);
-			if (position >= lengthBody) {
-				;
-			} else {
-				body[gapLength + position] = std::forward<ParamType>(v);
+		PLATFORM_ASSERT(position >= 0 && position < lengthBody);
+		if (IsValidIndex(position, part1Length)) {
+			body[position] = std::forward<ParamType>(v);
+		} else if (IsValidIndex(position, lengthBody)) {
+			body[gapLength + position] = std::forward<ParamType>(v);
+		}
+	}
+
+	template <typename ParamType>
+	bool UpdateValueAt(ptrdiff_t position, ParamType&& v) noexcept {
+		PLATFORM_ASSERT(position >= 0 && position < lengthBody);
+		if (IsValidIndex(position, lengthBody)) {
+			T * const data = ElementPointer(position);
+			const T current = std::forward<ParamType>(v);
+			if (current != *data) {
+				*data = current;
+				return true;
 			}
 		}
+		return false;
+	}
+
+	template <typename ParamType>
+	T ReplaceValueAt(ptrdiff_t position, ParamType&& v) noexcept {
+		PLATFORM_ASSERT(position >= 0 && position < lengthBody);
+		T * const data = ElementPointer(position);
+		const T previous = *data;
+		*data = std::forward<ParamType>(v);
+		return previous;
 	}
 
 	/// Retrieve the element at a particular position.
@@ -204,7 +217,7 @@ public:
 	/// Inserting at positions outside the current range fails.
 	void Insert(ptrdiff_t position, T v) {
 		PLATFORM_ASSERT((position >= 0) && (position <= lengthBody));
-		if ((position < 0) || (position > lengthBody)) {
+		if (!InRangeInclusive(position, lengthBody)) {
 			return;
 		}
 		RoomFor(1);
@@ -220,7 +233,7 @@ public:
 	void InsertValue(ptrdiff_t position, ptrdiff_t insertLength, T v) {
 		PLATFORM_ASSERT((position >= 0) && (position <= lengthBody));
 		if (insertLength > 0) {
-			if ((position < 0) || (position > lengthBody)) {
+			if (!InRangeInclusive(position, lengthBody)) {
 				return;
 			}
 			RoomFor(insertLength);
@@ -239,14 +252,20 @@ public:
 	T *InsertEmpty(ptrdiff_t position, ptrdiff_t insertLength) {
 		PLATFORM_ASSERT((position >= 0) && (position <= lengthBody));
 		if (insertLength > 0) {
-			if ((position < 0) || (position > lengthBody)) {
+			if (!InRangeInclusive(position, lengthBody)) {
 				return nullptr;
 			}
 			RoomFor(insertLength);
 			GapTo(position);
-			for (ptrdiff_t elem = part1Length; elem < part1Length + insertLength; elem++) {
-				T emptyOne = {};
-				body[elem] = std::move(emptyOne);
+			T *ptr = body.data() + part1Length;
+			//std::uninitialized_value_construct_n(ptr, insertLength);
+			if constexpr (std::is_scalar_v<T>) {
+				memset(ptr, 0, insertLength*sizeof(T));
+			} else {
+				static_assert(std::is_nothrow_default_constructible_v<T>);
+				for (ptrdiff_t elem = 0; elem < insertLength; elem++, ptr++) {
+					::new (ptr)T();
+				}
 			}
 			lengthBody += insertLength;
 			part1Length += insertLength;
@@ -267,12 +286,16 @@ public:
 	void InsertFromArray(ptrdiff_t positionToInsert, const T s[], ptrdiff_t positionFrom, ptrdiff_t insertLength) {
 		PLATFORM_ASSERT((positionToInsert >= 0) && (positionToInsert <= lengthBody));
 		if (insertLength > 0) {
-			if ((positionToInsert < 0) || (positionToInsert > lengthBody)) {
+			if (!InRangeInclusive(positionToInsert, lengthBody)) {
 				return;
 			}
 			RoomFor(insertLength);
 			GapTo(positionToInsert);
-			std::copy_n(s + positionFrom, insertLength, body.data() + part1Length);
+			if constexpr (__is_standard_layout(T)) {
+				memcpy(body.data() + part1Length, s + positionFrom, insertLength*sizeof(T));
+			} else {
+				std::copy_n(s + positionFrom, insertLength, body.data() + part1Length);
+			}
 			lengthBody += insertLength;
 			part1Length += insertLength;
 			gapLength -= insertLength;
@@ -290,13 +313,10 @@ public:
 	/// Cannot be noexcept as vector::shrink_to_fit may be called and it may throw.
 	void DeleteRange(ptrdiff_t position, ptrdiff_t deleteLength) {
 		PLATFORM_ASSERT((position >= 0) && (position + deleteLength <= lengthBody));
-		if ((position < 0) || ((position + deleteLength) > lengthBody)) {
-			return;
-		}
 		if ((position == 0) && (deleteLength == lengthBody)) {
 			// Full deallocation returns storage and is faster
 			Init();
-		} else if (deleteLength > 0) {
+		} else if (position >= 0 && deleteLength > 0 && (position + deleteLength) <= lengthBody) {
 			GapTo(position);
 			lengthBody -= deleteLength;
 			gapLength += deleteLength;
@@ -312,14 +332,34 @@ public:
 	void GetRange(T *buffer, ptrdiff_t position, ptrdiff_t retrieveLength) const noexcept {
 		// Split into up to 2 ranges, before and after the split then use memcpy on each.
 		ptrdiff_t range1Length = 0;
+		const T* data = body.data() + position;
 		if (position < part1Length) {
 			range1Length = std::min(retrieveLength, part1Length - position);
+			memcpy(buffer, data, range1Length*sizeof(T));
 		}
+		if (range1Length < retrieveLength) {
+			data += range1Length + gapLength;
+			const ptrdiff_t range2Length = retrieveLength - range1Length;
+			memcpy(buffer + range1Length, data, range2Length*sizeof(T));
+		}
+	}
+
+	int CheckRange(const T *buffer, ptrdiff_t position, ptrdiff_t rangeLength) const noexcept {
+		// Split into up to 2 ranges, before and after the split then use memcmp on each.
+		ptrdiff_t range1Length = 0;
+		int result = 0;
 		const T* data = body.data() + position;
-		std::copy_n(data, range1Length, buffer);
-		data += range1Length + gapLength;
-		const ptrdiff_t range2Length = retrieveLength - range1Length;
-		std::copy_n(data, range2Length, buffer + range1Length);
+		if (position < part1Length) {
+			range1Length = std::min(rangeLength, part1Length - position);
+			result = memcmp(buffer, data, range1Length*sizeof(T));
+		}
+		if (range1Length < rangeLength) {
+			data += range1Length + gapLength;
+			const ptrdiff_t range2Length = rangeLength - range1Length;
+			// NOLINTNEXTLINE(bugprone-suspicious-string-compare)
+			result |= memcmp(buffer + range1Length, data, range2Length*sizeof(T));
+		}
+		return result;
 	}
 
 	/// Compact the buffer and return a pointer to the first element.
@@ -344,6 +384,14 @@ public:
 				data += gapLength;
 			}
 		} else {
+			data += gapLength;
+		}
+		return data;
+	}
+
+	T *ElementPointer(ptrdiff_t position) noexcept {
+		T *data = body.data() + position;
+		if (position >= part1Length) {
 			data += gapLength;
 		}
 		return data;

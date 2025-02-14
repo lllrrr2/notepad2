@@ -11,6 +11,7 @@
 #include <string_view>
 #include <memory>
 
+struct IUnknown;
 #include <windows.h>
 #include <ole2.h>
 
@@ -106,7 +107,7 @@ class HanjaDic {
 			hr = CoCreateInstance(CLSID_HanjaDic, nullptr,
 				//CLSCTX_INPROC_SERVER, __uuidof(IHanjaDic),
 				CLSCTX_INPROC_SERVER, IID_IHanjaDic,
-				(LPVOID *)&instance);
+				AsPPVArgs(&instance));
 			if (SUCCEEDED(hr)) {
 				HJinterface.reset(instance);
 				hr = instance->OpenMainDic();
@@ -158,7 +159,7 @@ struct HanjaDicCloser {
 };
 
 bool GetHangulOfHanja(std::wstring &inout) noexcept {
-	// Convert every hanja to hangul.
+	// Convert every Hanja to Hangul.
 	// Return whether any character been converted.
 	// Hanja linked to different notes in Hangul have different codes,
 	// so current character based conversion is enough.
@@ -195,7 +196,7 @@ bool GetHangulOfHanja(std::wstring &inout) noexcept {
 }
 
 #if 0
-// cl /utf-8 /W4 /EHsc /std:c++20 /GS- /GR- /Gv /Ox /FAcs /DNDEBUG /DUNICODE /I../src HanjaDic.cxx
+// cl /utf-8 /W4 /EHsc /std:c++20 /O2 /GS- /GR- /Gv /FAcs /DNDEBUG /DUNICODE /I../src HanjaDic.cxx
 // g++ -Wall -Wextra -std=gnu++20 -O2 -fno-rtti -DNDEBUG -DUNICODE -I../src HanjaDic.cxx -lole32 -loleaut32
 #ifdef _MSC_VER
 #pragma comment(lib, "ole32.lib")

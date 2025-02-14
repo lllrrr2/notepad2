@@ -10,7 +10,13 @@ namespace Scintilla::Internal {
 
 class CaseFolder {
 public:
-	virtual ~CaseFolder() noexcept;
+	CaseFolder() = default;
+	// Deleted so CaseFolder objects can not be copied.
+	CaseFolder(const CaseFolder &source) = delete;
+	CaseFolder(CaseFolder &&) = delete;
+	CaseFolder &operator=(const CaseFolder &) = delete;
+	CaseFolder &operator=(CaseFolder &&) = delete;
+	virtual ~CaseFolder() = default;
 	virtual size_t Fold(char *folded, size_t sizeFolded, const char *mixed, size_t lenMixed) = 0;
 };
 
@@ -26,7 +32,7 @@ public:
 class ICaseConverter;
 
 class CaseFolderUnicode final : public CaseFolderTable {
-	ICaseConverter *converter;
+	const ICaseConverter *converter;
 public:
 	CaseFolderUnicode();
 	size_t Fold(char *folded, size_t sizeFolded, const char *mixed, size_t lenMixed) override;

@@ -1,11 +1,12 @@
 @ECHO OFF
 @rem used for GitHub Actions
-@rem need adjust path for MSYS2, mingw64, mingw32 and llvm-mingw for local use.
+@rem adjust path for MSYS2, mingw64, mingw32 and llvm-mingw for local use.
 
 SETLOCAL ENABLEEXTENSIONS
 CD /D %~dp0
 
-SET "JOBS=-j%NUMBER_OF_PROCESSORS%"
+SET /A "JOB_COUNT=(%NUMBER_OF_PROCESSORS% - 1) | 1"
+SET "JOBS=-j%JOB_COUNT%"
 SET "CLANG="
 SET "UCRT="
 SET "COMPILER=x86_64"
@@ -42,9 +43,9 @@ IF /I "%~1" == "aarch64"    SET "TARGET=aarch64"    & SHIFT & GOTO CheckSecondAr
 IF /I "%~1" == "armv7"      SET "TARGET=armv7"      & SHIFT & GOTO CheckSecondArg
 IF /I "%~1" == "Clang"      SET "CLANG=1"           & SHIFT & GOTO CheckSecondArg
 IF /I "%~1" == "all"        SET "ACTION=all"        & SHIFT & GOTO CheckSecondArg
-IF /I "%~1" == "metapath"   SET "ACTION=metapath"   & SHIFT & GOTO CheckSecondArg
+IF /I "%~1" == "matepath"   SET "ACTION=matepath"   & SHIFT & GOTO CheckSecondArg
 IF /I "%~1" == "scintilla"  SET "ACTION=scintilla"  & SHIFT & GOTO CheckSecondArg
-IF /I "%~1" == "notepad2"   SET "ACTION=notepad2"   & SHIFT & GOTO CheckSecondArg
+IF /I "%~1" == "notepad4"   SET "ACTION=notepad4"   & SHIFT & GOTO CheckSecondArg
 IF /I "%~1" == "clean"      SET "ACTION=clean"      & SHIFT & GOTO CheckSecondArg
 
 

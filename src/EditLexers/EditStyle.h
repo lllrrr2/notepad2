@@ -21,6 +21,7 @@
 #define NP2STYLE_CallTip				63219
 #define NP2STYLE_CodeFolding			63220
 #define NP2STYLE_Link					63221
+#define NP2STYLE_ChangeHistoryMarker	63222
 
 #define NP2STYLE_Default				63226
 #define NP2STYLE_Comment				63227
@@ -63,18 +64,6 @@
 #define NP2STYLE_ASPTag					63272
 #define NP2STYLE_PHPTag					63273
 
-#define NP2STYLE_PHPDefault				63281
-#define NP2STYLE_PHPComment				63282
-#define NP2STYLE_PHPKeyword				63283
-#define NP2STYLE_PHPString				63284
-#define NP2STYLE_PHPHeredocString		63285
-#define NP2STYLE_PHPNowdocString		63286
-#define NP2STYLE_PHPNumber				63287
-#define NP2STYLE_PHPOperator			63288
-#define NP2STYLE_PHPVariable			63289
-#define NP2STYLE_PHPStringVariable		63290
-#define NP2STYLE_PHPComplexVariable		63291
-
 #define NP2STYLE_JSDefault				63301
 #define NP2STYLE_JSComment				63302
 #define NP2STYLE_JSKeyword				63303
@@ -95,13 +84,14 @@
 #define NP2STYLE_TagClass				63401
 #define NP2STYLE_TagId					63402
 #define NP2STYLE_TagAttribute			63403
-#define NP2STYLE_PseudoClassElement		63404
+#define NP2STYLE_PseudoClass			63404
 #define NP2STYLE_UnknownPseudoClass		63405
-#define NP2STYLE_CSSProperty			63406
+#define NP2STYLE_PseudoElement			63406
 #define NP2STYLE_UnknownProperty		63407
-#define NP2STYLE_GroupRule				63408
+#define NP2STYLE_AtRule					63408
 #define NP2STYLE_Value					63409
 #define NP2STYLE_Important				63410
+#define NP2STYLE_UnknownPseudoElement	63411
 
 #define NP2STYLE_Class					63420
 #define NP2STYLE_Structure				63421
@@ -122,7 +112,7 @@
 #define NP2STYLE_FunctionDefinition		63436
 #define NP2STYLE_Protocol				63437
 #define NP2STYLE_MethodDefinition		63438
-
+#define NP2STYLE_MacroKeyword			63439
 #define NP2STYLE_Label					63440
 #define NP2STYLE_Command				63441
 #define NP2STYLE_RawString				63442
@@ -133,6 +123,7 @@
 #define NP2STYLE_TripleQuotedString		63447
 #define NP2STYLE_BasicFunction			63448
 #define NP2STYLE_PredefinedVariable		63449
+#define NP2STYLE_MacroFunction			63450
 
 #define NP2STYLE_ReservedWord			63451
 #define NP2STYLE_EscapeSequence			63452
@@ -146,18 +137,14 @@
 #define NP2STYLE_ArrayVar				63502
 #define NP2STYLE_HashVar				63503
 #define NP2STYLE_SymbolTableVar			63504
-#define NP2STYLE_Regex_mre				63505
-#define NP2STYLE_Substitution_re		63506
-// 63507
+#define NP2STYLE_SymbolArray			63505
+
 #define NP2STYLE_HeredocDelimiter		63508
 #define NP2STYLE_HeredocSingleQuoted	63509
 #define NP2STYLE_HeredocDoubleQuoted	63510
 #define NP2STYLE_HeredocBackticks		63511
-#define NP2STYLE_SingleQuotedString_q	63512
-#define NP2STYLE_DoubleQuotedString_qq	63513
-#define NP2STYLE_Backticks_qx			63514
-#define NP2STYLE_Regex_qr				63515
-#define NP2STYLE_Array_qw				63516
+
+#define NP2STYLE_StringArray			63516
 #define NP2STYLE_Prototype				63517
 #define NP2STYLE_FormatIdentifier		63518
 #define NP2STYLE_FormatBody				63519
@@ -187,16 +174,27 @@
 
 #define NP2STYLE_Cmdlet					63581
 #define NP2STYLE_Alias					63582
-
+#define NP2STYLE_Column1				63583
+#define NP2STYLE_Column2				63584
+#define NP2STYLE_Column3				63585
+#define NP2STYLE_Column4				63586
+#define NP2STYLE_Column5				63587
+#define NP2STYLE_Column6				63588
+#define NP2STYLE_Column7				63589
+#define NP2STYLE_Column8				63590
 #define NP2STYLE_SendKey				63591
 #define NP2STYLE_Special				63592
 #define NP2STYLE_HotString				63593
 #define NP2STYLE_HotKey					63594
+#define NP2STYLE_Column9				63595
+#define NP2STYLE_Column10				63596
 
 #define NP2STYLE_PascalKeyword 			63601
-
+#define NP2STYLE_Event					63602
 #define NP2STYLE_Parameter				63603
 #define NP2STYLE_InlineExpansion		63604
+#define NP2STYLE_Pragma					63605
+#define NP2STYLE_HardLineBreak			63606
 
 #define NP2STYLE_Section				63611
 #define NP2STYLE_Assignment				63612
@@ -269,11 +267,11 @@
 #define NP2STYLE_ListCode				63678
 #define NP2STYLE_Chapter				63679
 #define NP2STYLE_Document				63680
-#define NP2STYLE_StdPackage				63681
-#define NP2STYLE_StdOperator			63682
-#define NP2STYLE_StdFunction			63683
-#define NP2STYLE_StdType				63684
-#define NP2STYLE_UserDefine				63685
+#define NP2STYLE_Package				63681
+#define NP2STYLE_Subection				63682
+#define NP2STYLE_StandardFunction		63683
+#define NP2STYLE_StandardType			63684
+#define NP2STYLE_Subsubection			63685
 #define NP2STYLE_SystemTaskFunction		63686
 #define NP2STYLE_Intrinsic				63687
 #define NP2STYLE_Metadata				63688

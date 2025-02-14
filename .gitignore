@@ -1,3 +1,4 @@
+.cache
 .codelite
 .vs
 bin
@@ -10,13 +11,20 @@ build/CodeLite/*.json
 build/CodeLite/Makefile
 build/CodeLite/build*
 locale/en
+scintilla/scripts/*.html
+scintilla/scripts/*.json
+scintilla/scripts/*.txt
+compile_commands.json
 *.suo
 *.sdf
 *.user
 *.VC.db
 *.opendb
 *.aps
+*.asm
+*.s
 *.obj
+*.o
 *.exe
 *.cod
 *.pyc

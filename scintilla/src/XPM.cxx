@@ -6,6 +6,7 @@
 // The License.txt file describes the conditions under which this software may be distributed.
 
 #include <cstdlib>
+#include <cstdint>
 #include <cstring>
 #include <climits>
 
@@ -56,28 +57,21 @@ size_t MeasureLength(const char *s) noexcept {
 	return i;
 }
 
-constexpr unsigned int GetHexDigit(unsigned char ch) noexcept {
-	unsigned int diff = ch - '0';
-	if (diff < 10) {
-		return diff;
-	}
-	diff = (ch | 0x20) - 'a';
-	if (diff < 6) {
-		return diff + 10;
-	}
-	return 0;
+inline ColourRGBA ColourFromHex(const char *val) noexcept {
+	unsigned color = strtoul(val, nullptr, 16);
+	color = ColorFromRGBHex(color);
+	return ColourRGBA(color);
 }
 
-constexpr unsigned int GetHexValue(unsigned char ch1, unsigned char ch2) noexcept {
-	return (GetHexDigit(ch1) << 4) | GetHexDigit(ch2);
+constexpr bool IsPixelIndex(unsigned index, unsigned dimension) noexcept {
+	return index < dimension;
 }
 
-constexpr ColourRGBA ColourFromHex(const char *val) noexcept {
-	const unsigned int r = GetHexValue(val[0], val[1]);
-	const unsigned int g = GetHexValue(val[2], val[3]);
-	const unsigned int b = GetHexValue(val[4], val[5]);
-	return ColourRGBA(r, g, b);
+#if !(NP2_USE_AVX2 || NP2_USE_SSE2)
+constexpr unsigned char AlphaMultiplied(unsigned char value, unsigned char alpha) noexcept {
+	return (value * alpha) / UCHAR_MAX;
 }
+#endif
 
 }
 
@@ -125,7 +119,7 @@ void XPM::Init(const char *const *linesForm) {
 	if (!linesForm)
 		return;
 
-	std::fill(colourCodeTable, std::end(colourCodeTable), ColourRGBA(0, 0, 0, 0));
+	std::fill(colourCodeTable, std::end(colourCodeTable), black);
 	const char *line0 = linesForm[0];
 	width = atoi(line0);
 	line0 = NextField(line0);
@@ -141,7 +135,7 @@ void XPM::Init(const char *const *linesForm) {
 
 	for (int c = 0; c < nColours; c++) {
 		const char *colourDef = linesForm[c + 1];
-		const char code = colourDef[0];
+		const unsigned char code = colourDef[0];
 		colourDef += 4;
 		ColourRGBA colour(0, 0, 0);
 		if (*colourDef == '#') {
@@ -149,7 +143,7 @@ void XPM::Init(const char *const *linesForm) {
 		} else {
 			codeTransparent = code;
 		}
-		colourCodeTable[static_cast<unsigned char>(code)] = colour;
+		colourCodeTable[code] = colour;
 	}
 
 	for (int y = 0; y < height; y++) {
@@ -184,7 +178,7 @@ void XPM::Draw(Surface *surface, PRectangle rc) {
 }
 
 ColourRGBA XPM::PixelAt(int x, int y) const noexcept {
-	if (pixels.empty() || (x < 0) || (x >= width) || (y < 0) || (y >= height)) {
+	if (pixels.empty() || !IsPixelIndex(x, width) || !IsPixelIndex(y, height)) {
 		// Out of bounds -> transparent black
 		return ColourRGBA(0, 0, 0, 0);
 	}
@@ -276,14 +270,14 @@ void RGBAImage::BGRAFromRGBA(unsigned char *pixelsBGRA, const unsigned char *pix
 	for (size_t i = 0; i < count; i++, pbgra++) {
 		__m128i i16x8Color = unpack_color_epi16_sse4_ptr64(prgba++);
 		i16x8Color = _mm_shufflehi_epi16(_mm_shufflelo_epi16(i16x8Color, _MM_SHUFFLE(3, 0, 1, 2)), _MM_SHUFFLE(3, 0, 1, 2));
-		__m128i i16x8Alpha = _mm_shufflehi_epi16(_mm_shufflelo_epi16(i16x8Color, 0xff), 0xff);
+		const __m128i i16x8Alpha = _mm_shufflehi_epi16(_mm_shufflelo_epi16(i16x8Color, 0xff), 0xff);
 
 		i16x8Color = _mm_mullo_epi16(i16x8Color, i16x8Alpha);
 		i16x8Color = mm_div_epu16_by_255(i16x8Color);
 		i16x8Color = _mm_blend_epi16(i16x8Alpha, i16x8Color, 0x77);
 
 		i16x8Color = pack_color_epi16_sse2_si128(i16x8Color);
-		_mm_storel_epi64((__m128i *)pbgra, i16x8Color);
+		_mm_storel_epi64(reinterpret_cast<__m128i *>(pbgra), i16x8Color);
 	}
 
 #elif NP2_USE_SSE2
@@ -293,7 +287,7 @@ void RGBAImage::BGRAFromRGBA(unsigned char *pixelsBGRA, const unsigned char *pix
 	for (size_t i = 0; i < count; i++, pbgra++) {
 		const uint32_t rgba = bswap32(*prgba++);
 		__m128i i16x4Color = unpack_color_epi16_sse2_si32(rgba);
-		__m128i i16x4Alpha = _mm_shufflelo_epi16(i16x4Color, 0);
+		const __m128i i16x4Alpha = _mm_shufflelo_epi16(i16x4Color, 0);
 		i16x4Color = _mm_mullo_epi16(i16x4Color, i16x4Alpha);
 		i16x4Color = mm_div_epu16_by_255(i16x4Color);
 
@@ -305,9 +299,9 @@ void RGBAImage::BGRAFromRGBA(unsigned char *pixelsBGRA, const unsigned char *pix
 	for (size_t i = 0; i < count; i++) {
 		const unsigned char alpha = pixelsRGBA[3];
 		// Input is RGBA, output is BGRA with premultiplied alpha
-		pixelsBGRA[2] = pixelsRGBA[0] * alpha / UCHAR_MAX;
-		pixelsBGRA[1] = pixelsRGBA[1] * alpha / UCHAR_MAX;
-		pixelsBGRA[0] = pixelsRGBA[2] * alpha / UCHAR_MAX;
+		pixelsBGRA[2] = AlphaMultiplied(pixelsRGBA[0], alpha);
+		pixelsBGRA[1] = AlphaMultiplied(pixelsRGBA[1], alpha);
+		pixelsBGRA[0] = AlphaMultiplied(pixelsRGBA[2], alpha);
 		pixelsBGRA[3] = alpha;
 		pixelsRGBA += bytesPerPixel;
 		pixelsBGRA += bytesPerPixel;

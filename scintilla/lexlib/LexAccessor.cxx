@@ -1,8 +1,9 @@
-// This file is part of Notepad2.
+// This file is part of Notepad4.
 // See License.txt for details about distribution and modification.
 
 #include <cstdint>
 #include <cassert>
+#include <cstring>
 
 #include <string>
 #include <string_view>
@@ -19,16 +20,28 @@ namespace Lexilla {
 
 bool LexAccessor::MatchIgnoreCase(Sci_Position pos, const char *s) noexcept {
 	for (; *s; s++, pos++) {
-		if (*s != MakeLowerCase(SafeGetCharAt(pos))) {
+		if (*s != MakeLowerCase((*this)[pos])) {
 			return false;
 		}
 	}
 	return true;
 }
 
-void LexAccessor::GetRange(Sci_PositionU startPos_, Sci_PositionU endPos_, char *s, Sci_PositionU len) noexcept {
-	assert(startPos_ <= endPos_ && len != 0 && s != nullptr);
+bool LexAccessor::MatchLowerCase(Sci_Position pos, const char *s) noexcept {
+	for (; *s; s++, pos++) {
+		if (*s != UnsafeLower((*this)[pos])) {
+			return false;
+		}
+	}
+	return true;
+}
+
+void LexAccessor::GetRange(Sci_PositionU startPos_, Sci_PositionU endPos_, char *s, Sci_PositionU len) const noexcept {
+	assert(s != nullptr);
+	assert(startPos_ <= endPos_ && len != 0);
+	//memset(s, 0, len);
 	endPos_ = sci::min(endPos_, startPos_ + len - 1);
+	//endPos_ = sci::min(endPos_, static_cast<Sci_PositionU>(lenDoc));
 	len = endPos_ - startPos_;
 	if (startPos_ >= static_cast<Sci_PositionU>(startPos) && endPos_ <= static_cast<Sci_PositionU>(endPos)) {
 		const char * const p = buf + (startPos_ - startPos);
@@ -39,29 +52,26 @@ void LexAccessor::GetRange(Sci_PositionU startPos_, Sci_PositionU endPos_, char 
 	s[len] = '\0';
 }
 
-void LexAccessor::GetRangeLowered(Sci_PositionU startPos_, Sci_PositionU endPos_, char *s, Sci_PositionU len) noexcept {
+void LexAccessor::GetRangeLowered(Sci_PositionU startPos_, Sci_PositionU endPos_, char *s, Sci_PositionU len) const noexcept {
 	GetRange(startPos_, endPos_, s, len);
-	while (*s) {
-		if (*s >= 'A' && *s <= 'Z') {
-			*s += 'a' - 'A';
-		}
-		++s;
-	}
+	ToLowerCase(s);
 }
 
-std::string LexAccessor::GetRange(Sci_PositionU startPos_, Sci_PositionU endPos_) {
+std::string LexAccessor::GetRange(Sci_PositionU startPos_, Sci_PositionU endPos_) const {
 	assert(startPos_ < endPos_);
+	//endPos_ = sci::min(endPos_, static_cast<Sci_PositionU>(lenDoc));
 	const Sci_PositionU len = endPos_ - startPos_;
 	std::string s(len, '\0');
-	GetRange(startPos_, endPos_, s.data(), len);
+	GetRange(startPos_, endPos_, s.data(), len + 1);
 	return s;
 }
 
-std::string LexAccessor::GetRangeLowered(Sci_PositionU startPos_, Sci_PositionU endPos_) {
+std::string LexAccessor::GetRangeLowered(Sci_PositionU startPos_, Sci_PositionU endPos_) const {
 	assert(startPos_ < endPos_);
+	//endPos_ = sci::min(endPos_, static_cast<Sci_PositionU>(lenDoc));
 	const Sci_PositionU len = endPos_ - startPos_;
 	std::string s(len, '\0');
-	GetRangeLowered(startPos_, endPos_, s.data(), len);
+	GetRangeLowered(startPos_, endPos_, s.data(), len + 1);
 	return s;
 }
 
@@ -69,7 +79,7 @@ Sci_Position LexLineSkipSpaceTab(LexAccessor &styler, Sci_Line line) noexcept {
 	Sci_Position startPos = styler.LineStart(line);
 	const Sci_Position endPos = styler.LineStart(line + 1) - 1;
 	for (; startPos < endPos; startPos++) {
-		if (!IsSpaceOrTab(styler.SafeGetCharAt(startPos))) {
+		if (!IsSpaceOrTab(styler[startPos])) {
 			break;
 		}
 	}
@@ -80,7 +90,7 @@ bool IsLexSpaceToEOL(LexAccessor &styler, Sci_Position startPos) noexcept {
 	const Sci_Line line = styler.GetLine(startPos);
 	const Sci_Position endPos = styler.LineStart(line + 1) - 1;
 	for (; startPos < endPos; startPos++) {
-		const char ch = styler.SafeGetCharAt(startPos);
+		const char ch = styler[startPos];
 		if (!IsSpaceOrTab(ch)) {
 			return IsEOLChar(ch);
 		}
@@ -92,7 +102,7 @@ bool IsLexEmptyLine(LexAccessor &styler, Sci_Line line) noexcept {
 	Sci_Position startPos = styler.LineStart(line);
 	const Sci_Position endPos = styler.LineStart(line + 1) - 1;
 	for (; startPos < endPos; startPos++) {
-		const char ch = styler.SafeGetCharAt(startPos);
+		const char ch = styler[startPos];
 		if (!IsSpaceOrTab(ch)) {
 			return IsEOLChar(ch);
 		}
@@ -104,7 +114,7 @@ bool IsLexLineStartsWith(LexAccessor &styler, Sci_Line line, const char *word, b
 	Sci_Position startPos = styler.LineStart(line);
 	const Sci_Position endPos = styler.LineStart(line + 1) - 1;
 	for (; startPos < endPos; startPos++) {
-		if (!IsSpaceOrTab(styler.SafeGetCharAt(startPos))) {
+		if (!IsSpaceOrTab(styler[startPos])) {
 			return styler.StyleAt(startPos) == style &&
 			(matchCase ? styler.Match(startPos, word) : styler.MatchIgnoreCase(startPos, word));
 		}
@@ -116,9 +126,9 @@ bool IsLexCommentLine(LexAccessor &styler, Sci_Line line, int style) noexcept {
 	Sci_Position startPos = styler.LineStart(line);
 	const Sci_Position endPos = styler.LineStart(line + 1) - 1;
 	for (; startPos < endPos; startPos++) {
-		if (!IsSpaceOrTab(styler.SafeGetCharAt(startPos))) {
+		if (!IsSpaceOrTab(styler[startPos])) {
 			const int stl = styler.StyleAt(startPos);
-			//char ch = styler.SafeGetCharAt(startPos);
+			//char ch = styler[startPos];
 			if (stl == 0 && stl != style) {
 				return false;
 			}
@@ -142,7 +152,7 @@ Sci_Position LexSkipWhiteSpace(LexAccessor &styler, Sci_Position startPos, Sci_P
 
 Sci_Position LexSkipWhiteSpace(LexAccessor &styler, Sci_Position startPos, Sci_Position endPos, bool IsStreamCommentStyle(int) noexcept) noexcept {
 	for (; startPos < endPos; startPos++) {
-		if (!(IsWhiteSpace(styler.SafeGetCharAt(startPos)) || IsStreamCommentStyle(styler.StyleAt(startPos)))) {
+		if (!(IsWhiteSpace(styler[startPos]) || IsStreamCommentStyle(styler.StyleAt(startPos)))) {
 			break;
 		}
 	}
@@ -152,7 +162,7 @@ Sci_Position LexSkipWhiteSpace(LexAccessor &styler, Sci_Position startPos, Sci_P
 Sci_Position LexSkipWhiteSpace(LexAccessor &styler, Sci_Position startPos, Sci_Position endPos,
 	bool IsStreamCommentStyle(int), const CharacterSet &charSet) noexcept {
 	for (; startPos < endPos; startPos++) {
-		const char ch = styler.SafeGetCharAt(startPos);
+		const char ch = styler[startPos];
 		if (!(IsWhiteSpace(ch) || charSet.Contains(ch) || IsStreamCommentStyle(styler.StyleAt(startPos)))) {
 			break;
 		}
@@ -162,12 +172,12 @@ Sci_Position LexSkipWhiteSpace(LexAccessor &styler, Sci_Position startPos, Sci_P
 
 Sci_PositionU LexGetRange(LexAccessor &styler, Sci_Position startPos, bool IsWordChar(int) noexcept, char *s, Sci_PositionU len) noexcept {
 	Sci_PositionU i = 0;
-	char ch = styler.SafeGetCharAt(startPos);
+	char ch = styler[startPos];
 	while ((i < len - 1) && IsWordChar(static_cast<unsigned char>(ch))) {
 		s[i] = ch;
 		i++;
 		startPos++;
-		ch = styler.SafeGetCharAt(startPos);
+		ch = styler[startPos];
 	}
 	s[i] = '\0';
 	return i;
@@ -175,12 +185,12 @@ Sci_PositionU LexGetRange(LexAccessor &styler, Sci_Position startPos, bool IsWor
 
 Sci_PositionU LexGetRangeLowered(LexAccessor &styler, Sci_Position startPos, bool IsWordChar(int) noexcept, char *s, Sci_PositionU len) noexcept {
 	Sci_PositionU i = 0;
-	char ch = MakeLowerCase(styler.SafeGetCharAt(startPos));
+	char ch = MakeLowerCase(styler[startPos]);
 	while ((i < len - 1) && IsWordChar(static_cast<unsigned char>(ch))) {
 		s[i] = ch;
 		i++;
 		startPos++;
-		ch = MakeLowerCase(styler.SafeGetCharAt(startPos));
+		ch = MakeLowerCase(styler[startPos]);
 	}
 	s[i] = '\0';
 	return i;
@@ -188,12 +198,12 @@ Sci_PositionU LexGetRangeLowered(LexAccessor &styler, Sci_Position startPos, boo
 
 Sci_PositionU LexGetRange(LexAccessor &styler, Sci_Position startPos, const CharacterSet &charSet, char *s, Sci_PositionU len) noexcept {
 	Sci_PositionU i = 0;
-	char ch = styler.SafeGetCharAt(startPos);
+	char ch = styler[startPos];
 	while ((i < len - 1) && charSet.Contains(ch)) {
 		s[i] = ch;
 		i++;
 		startPos++;
-		ch = styler.SafeGetCharAt(startPos);
+		ch = styler[startPos];
 	}
 	s[i] = '\0';
 	return i;
@@ -201,12 +211,12 @@ Sci_PositionU LexGetRange(LexAccessor &styler, Sci_Position startPos, const Char
 
 Sci_PositionU LexGetRangeLowered(LexAccessor &styler, Sci_Position startPos, const CharacterSet &charSet, char *s, Sci_PositionU len) noexcept {
 	Sci_PositionU i = 0;
-	char ch = MakeLowerCase(styler.SafeGetCharAt(startPos));
+	char ch = MakeLowerCase(styler[startPos]);
 	while ((i < len - 1) && charSet.Contains(ch)) {
 		s[i] = ch;
 		i++;
 		startPos++;
-		ch = MakeLowerCase(styler.SafeGetCharAt(startPos));
+		ch = MakeLowerCase(styler[startPos]);
 	}
 	s[i] = '\0';
 	return i;
@@ -236,18 +246,23 @@ void BacktrackToStart(const LexAccessor &styler, int stateMask, Sci_PositionU &s
 			const Sci_PositionU endPos = startPos + lengthDoc;
 			startPos = (line == 0)? 0 : styler.LineStart(line);
 			lengthDoc = endPos - startPos;
-			initStyle = (startPos == 0)? 0 : styler.StyleAt(startPos - 1);
+			initStyle = (startPos == 0)? 0 : styler.StyleIndexAt(startPos - 1);
 		}
 	}
 }
 
-Sci_PositionU LookbackNonWhite(LexAccessor &styler, Sci_PositionU startPos, int maxSpaceStyle, int &chPrevNonWhite, int &stylePrevNonWhite) noexcept {
-	 do {
+Sci_PositionU LookbackNonWhite(LexAccessor &styler, Sci_PositionU startPos, unsigned maxSpaceStyle, int &chPrevNonWhite, int &stylePrevNonWhite) noexcept {
+	const unsigned startStyle = maxSpaceStyle >> 8;
+	maxSpaceStyle &= 0xff;
+	do {
 		--startPos;
-		const int style = styler.StyleAt(startPos);
+		const unsigned style = styler.StyleIndexAt(startPos);
 		if (style > maxSpaceStyle) {
 			stylePrevNonWhite = style;
-			chPrevNonWhite = static_cast<unsigned char>(styler.SafeGetCharAt(startPos));
+			chPrevNonWhite = static_cast<unsigned char>(styler[startPos]);
+			break;
+		}
+		if (style < startStyle) {
 			break;
 		}
 	} while (startPos != 0);
@@ -266,7 +281,7 @@ Sci_PositionU CheckBraceOnNextLine(LexAccessor &styler, Sci_Line line, int opera
 		return 0;
 	}
 
-	int style = styler.StyleAt(bracePos);
+	int style = styler.StyleIndexAt(bracePos);
 	if (style != operatorStyle) {
 		return 0;
 	}
@@ -278,7 +293,7 @@ Sci_PositionU CheckBraceOnNextLine(LexAccessor &styler, Sci_Line line, int opera
 	// ignore current line, e.g. current line is preprocessor.
 	if (ignoreStyle) {
 		while (startPos < endPos) {
-			style = styler.StyleAt(startPos);
+			style = styler.StyleIndexAt(startPos);
 			if (style > maxSpaceStyle) {
 				break;
 			}
@@ -290,7 +305,7 @@ Sci_PositionU CheckBraceOnNextLine(LexAccessor &styler, Sci_Line line, int opera
 	}
 
 	while (endPos >= startPos) {
-		style = styler.StyleAt(endPos);
+		style = styler.StyleIndexAt(endPos);
 		if (style > maxSpaceStyle) {
 			break;
 		}

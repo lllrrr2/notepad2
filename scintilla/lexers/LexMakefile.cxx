@@ -1,4 +1,4 @@
-// This file is part of Notepad2.
+// This file is part of Notepad4.
 // See License.txt for details about distribution and modification.
 //! Lexer for Makefile of gmake, nmake, bmake, qmake
 
@@ -38,9 +38,9 @@ constexpr bool IsMakeOp(int ch, int chNext) noexcept {
 
 #define MAX_WORD_LENGTH	15
 void ColouriseMakeDoc(Sci_PositionU startPos, Sci_Position length, int initStyle, LexerWordList keywordLists, Accessor &styler) {
-	const WordList &keywordsGP = *keywordLists[0];		// gnu make Preprocessor
-	const WordList &keywordsDP2 = *keywordLists[6];		// bmake
-	const WordList &keywordsNinja = *keywordLists[7];	// ninja
+	const WordList &keywordsGP = keywordLists[0];		// gnu make Preprocessor
+	const WordList &keywordsDP2 = keywordLists[6];		// bmake
+	const WordList &keywordsNinja = keywordLists[7];	// ninja
 
 	int state = initStyle;
 	int ch = 0;
@@ -232,7 +232,7 @@ void ColouriseMakeDoc(Sci_PositionU startPos, Sci_Position length, int initStyle
 
 #define IsCommentLine(line)	IsLexCommentLine(styler, line, SCE_MAKE_COMMENT)
 
-void FoldMakeDoc(Sci_PositionU startPos, Sci_Position length, int initStyle, LexerWordList, Accessor &styler) {
+void FoldMakeDoc(Sci_PositionU startPos, Sci_Position length, int initStyle, LexerWordList /*keywordLists*/, Accessor &styler) {
 	const Sci_PositionU endPos = startPos + length;
 	int visibleChars = 0;
 	Sci_Line lineCurrent = styler.GetLine(startPos);
@@ -285,13 +285,12 @@ void FoldMakeDoc(Sci_PositionU startPos, Sci_Position length, int initStyle, Lex
 			visibleChars++;
 
 		if (atEOL || (i == endPos - 1)) {
+			levelNext = sci::max(levelNext, SC_FOLDLEVELBASE);
 			const int levelUse = levelCurrent;
-			int lev = levelUse | levelNext << 16;
+			int lev = levelUse | (levelNext << 16);
 			if (levelUse < levelNext)
 				lev |= SC_FOLDLEVELHEADERFLAG;
-			if (lev != styler.LevelAt(lineCurrent)) {
-				styler.SetLevel(lineCurrent, lev);
-			}
+			styler.SetLevel(lineCurrent, lev);
 			lineCurrent++;
 			levelCurrent = levelNext;
 			visibleChars = 0;
@@ -301,4 +300,4 @@ void FoldMakeDoc(Sci_PositionU startPos, Sci_Position length, int initStyle, Lex
 
 }
 
-LexerModule lmMake(SCLEX_MAKEFILE, ColouriseMakeDoc, "makefile", FoldMakeDoc);
+extern const LexerModule lmMakefile(SCLEX_MAKEFILE, ColouriseMakeDoc, "makefile", FoldMakeDoc);

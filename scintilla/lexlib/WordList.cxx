@@ -5,7 +5,6 @@
 // Copyright 1998-2002 by Neil Hodgson <neilh@scintilla.org>
 // The License.txt file describes the conditions under which this software may be distributed.
 
-#include <cstdlib>
 #include <cassert>
 #include <cstring>
 
@@ -88,20 +87,11 @@ struct Range {
 
 }
 
-WordList::WordList() noexcept :
-	words(nullptr), list(nullptr), len(0) {
-	// Prevent warnings by static analyzers about uninitialized ranges.
-	ranges[0] = {};
-}
-
 WordList::~WordList() {
 	Clear();
 }
 
-WordList::operator bool() const noexcept {
-	return len != 0;
-}
-
+#if 0
 bool WordList::operator!=(const WordList &other) const noexcept {
 	if (len != other.len) {
 		return true;
@@ -113,44 +103,44 @@ bool WordList::operator!=(const WordList &other) const noexcept {
 	}
 	return false;
 }
-
-range_t WordList::Length() const noexcept {
-	return len;
-}
+#endif
 
 void WordList::Clear() noexcept {
 	if (words) {
-		delete[]list;
 		delete[]words;
+		delete[]list;
+		words = nullptr;
+		list = nullptr;
+		//len = 0;
 	}
-	words = nullptr;
-	list = nullptr;
-	len = 0;
 }
 
-bool WordList::Set(const char *s, bool toLower) {
-	// omitted comparison for Notepad2, we don't care whether the list is same as before or not.
-	// 1. when we call SciCall_SetKeywords(), the document or styles already changed.
+bool WordList::Set(const char *s, KeywordAttr attribute) {
+	// omitted comparison for Notepad4, we don't care whether the list is same as before or not.
+	// 1. when we call SciCall_SetKeywords(), the document or lexer already changed.
 	// 2. the comparison is expensive than rebuild the list, especially for a long list.
 
 	Clear();
 	const size_t lenS = strlen(s) + 1;
 	list = new char[lenS];
 	memcpy(list, s, lenS);
-	if (toLower) {
+	if (attribute & KeywordAttr_MakeLower) {
 		char *p = list;
 		while (*p) {
 			if (*p >= 'A' && *p <= 'Z') {
-				*p += 'a' - 'A';
+				*p |= 'a' - 'A';
 			}
 			++p;
 		}
 	}
 
+	range_t len = 0;
 	words = ArrayFromWordList(list, lenS - 1, &len);
-	std::sort(words, words + len, [](const char *a, const char *b) noexcept {
-		return strcmp(a, b) < 0;
-	});
+	if (!(attribute & KeywordAttr_PreSorted)) {
+		std::sort(words, words + len, [](const char *a, const char *b) noexcept {
+			return strcmp(a, b) < 0;
+		});
+	}
 
 	memset(ranges, 0, sizeof(ranges));
 	for (range_t i = 0; i < len;) {
@@ -159,7 +149,8 @@ bool WordList::Set(const char *s, bool toLower) {
 		while (static_cast<unsigned char>(*words[i]) == indexChar) {
 			++i;
 		}
-		ranges[indexChar] = start | (i << 16);
+		assert(static_cast<unsigned>(indexChar - MinIndexChar) < std::size(ranges));
+		ranges[indexChar - MinIndexChar] = start | (i << 16);
 	}
 	return true;
 }
@@ -173,11 +164,11 @@ bool WordList::InList(const char *s) const noexcept {
 	if (nullptr == words) {
 		return false;
 	}
-	const unsigned char firstChar = s[0];
-	if (firstChar & 0x80) {
+	const unsigned index = static_cast<unsigned char>(s[0]) - MinIndexChar;
+	if (index > std::size(ranges) - 1) {
 		return false;
 	}
-	range_t end = ranges[firstChar];
+	range_t end = ranges[index];
 	if (end) {
 		Range range(end);
 		range_t count = range.Length();
@@ -217,7 +208,7 @@ bool WordList::InList(const char *s) const noexcept {
 		}
 	}
 
-	end = ranges[static_cast<unsigned char>('^')];
+	end = ranges[static_cast<unsigned char>('^') - MinIndexChar];
 	if (end) {
 		Range range(end);
 		do {
@@ -245,11 +236,11 @@ bool WordList::InListPrefixed(const char *s, const char marker) const noexcept {
 	if (nullptr == words) {
 		return false;
 	}
-	const unsigned char firstChar = s[0];
-	if (firstChar & 0x80) {
+	const unsigned index = static_cast<unsigned char>(s[0]) - MinIndexChar;
+	if (index > std::size(ranges) - 1) {
 		return false;
 	}
-	range_t end = ranges[firstChar];
+	range_t end = ranges[index];
 	if (end) {
 		Range range(end);
 		range_t count = range.Length();
@@ -289,7 +280,7 @@ bool WordList::InListPrefixed(const char *s, const char marker) const noexcept {
 		}
 	}
 
-	end = ranges[static_cast<unsigned char>('^')];
+	end = ranges[static_cast<unsigned char>('^') - MinIndexChar];
 	if (end) {
 		Range range(end);
 		do {
@@ -316,11 +307,11 @@ bool WordList::InListAbbreviated(const char *s, const char marker) const noexcep
 	if (nullptr == words) {
 		return false;
 	}
-	const unsigned char firstChar = s[0];
-	if (firstChar & 0x80) {
+	const unsigned index = static_cast<unsigned char>(s[0]) - MinIndexChar;
+	if (index > std::size(ranges) - 1) {
 		return false;
 	}
-	range_t end = ranges[firstChar];
+	range_t end = ranges[index];
 	if (end) {
 		Range range(end);
 		do {
@@ -345,7 +336,7 @@ bool WordList::InListAbbreviated(const char *s, const char marker) const noexcep
 		} while (range.Next());
 	}
 
-	end = ranges[static_cast<unsigned char>('^')];
+	end = ranges[static_cast<unsigned char>('^') - MinIndexChar];
 	if (end) {
 		Range range(end);
 		do {
@@ -363,7 +354,7 @@ bool WordList::InListAbbreviated(const char *s, const char marker) const noexcep
 	return false;
 }
 
-/** similar to InListAbbreviated, but word s can be a abridged version of a keyword.
+/** similar to InListAbbreviated, but word s can be an abridged version of a keyword.
 * eg. the keyword is defined as "after.~:". This means the word must have a prefix (begins with) of
 * "after." and suffix (ends with) of ":" to be a keyword, Hence "after.field:" , "after.form.item:" are valid.
 * Similarly "~.is.valid" keyword is suffix only... hence "field.is.valid" , "form.is.valid" are valid.
@@ -374,11 +365,11 @@ bool WordList::InListAbridged(const char *s, const char marker) const noexcept {
 	if (nullptr == words) {
 		return false;
 	}
-	const unsigned char firstChar = s[0];
-	if (firstChar & 0x80) {
+	unsigned index = static_cast<unsigned char>(s[0]) - MinIndexChar;
+	if (index > std::size(ranges) - 1) {
 		return false;
 	}
-	range_t end = ranges[firstChar];
+	range_t end = ranges[index];
 	if (end) {
 		Range range(end);
 		do {
@@ -403,7 +394,11 @@ bool WordList::InListAbridged(const char *s, const char marker) const noexcept {
 		} while (range.Next());
 	}
 
-	end = ranges[static_cast<unsigned char>(marker)];
+	index = static_cast<unsigned char>(marker) - MinIndexChar;
+	if (index > std::size(ranges) - 1) {
+		return false;
+	}
+	end = ranges[index];
 	if (end) {
 		Range range(end);
 		do {

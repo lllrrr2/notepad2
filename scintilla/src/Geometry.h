@@ -23,7 +23,6 @@
 namespace Scintilla::Internal {
 
 typedef double XYPOSITION;
-typedef double XYACCUMULATOR;
 
 // https://secret.club/2021/04/09/std-clamp.html
 // https://bugs.llvm.org/show_bug.cgi?id=49909
@@ -89,6 +88,9 @@ public:
 	constexpr bool Intersects(Interval other) const noexcept {
 		return (right > other.left) && (left < other.right);
 	}
+	constexpr Interval Offset(XYPOSITION offset) const noexcept {
+		return {left + offset, right + offset};
+	}
 };
 
 /**
@@ -134,6 +136,10 @@ public:
 		return (right > other.left) && (left < other.right) &&
 			(bottom > other.top) && (top < other.bottom);
 	}
+	constexpr bool Intersects(Interval horizontalBounds) const noexcept {
+		return (right > horizontalBounds.left) && (left < horizontalBounds.right);
+	}
+
 	void Move(XYPOSITION xDelta, XYPOSITION yDelta) noexcept {
 		left += xDelta;
 		top += yDelta;
@@ -152,6 +158,10 @@ public:
 	}
 	constexpr PRectangle Deflate(int xDelta, int yDelta) const noexcept {
 		return Inflate(-xDelta, -yDelta);
+	}
+
+	PRectangle WithHorizontalBounds(Interval horizontal) const noexcept {
+		return PRectangle(horizontal.left, top, horizontal.right, bottom);
 	}
 
 	constexpr PRectangle Inset(XYPOSITION delta) const noexcept {
@@ -188,6 +198,7 @@ Interval HorizontalBounds(PRectangle rc) noexcept;
 
 XYPOSITION PixelAlign(XYPOSITION xy, int pixelDivisions) noexcept;
 XYPOSITION PixelAlignFloor(XYPOSITION xy, int pixelDivisions) noexcept;
+XYPOSITION PixelAlignCeil(XYPOSITION xy, int pixelDivisions) noexcept;
 
 Point PixelAlign(Point pt, int pixelDivisions) noexcept;
 
@@ -197,13 +208,18 @@ PRectangle PixelAlignOutside(PRectangle rc, int pixelDivisions) noexcept;
 /**
 * Holds an RGBA colour with 8 bits for each component.
 */
-constexpr float componentMaximum = 255.0f;
+constexpr float componentMaximum = 255.0F;
+constexpr unsigned int maximumByte = 0xffU;
 class ColourRGBA final {
 	unsigned int co;
+	static constexpr float ComponentAsFloat(int component) noexcept {
+		return component / componentMaximum;
+	}
+	static constexpr int rgbMask = 0xffffff;
 public:
 	constexpr explicit ColourRGBA(unsigned int co_ = 0) noexcept : co(co_) {}
 
-	constexpr ColourRGBA(unsigned int red, unsigned int green, unsigned int blue, unsigned int alpha = 0xff) noexcept :
+	constexpr ColourRGBA(unsigned int red, unsigned int green, unsigned int blue, unsigned int alpha = maximumByte) noexcept :
 		ColourRGBA(red | (green << 8) | (blue << 16) | (alpha << 24)) {
 	}
 
@@ -212,19 +228,23 @@ public:
 	}
 
 	static constexpr ColourRGBA FromRGB(unsigned int co_) noexcept {
-		return ColourRGBA(co_ | (0xffu << 24));
+		return ColourRGBA(co_ | (maximumByte << 24));
+	}
+
+	static constexpr ColourRGBA Grey(unsigned int grey, unsigned int alpha = maximumByte) noexcept {
+		return ColourRGBA(grey, grey, grey, alpha);
 	}
 
 	static constexpr ColourRGBA FromIpRGB(intptr_t co_) noexcept {
-		return ColourRGBA(static_cast<unsigned int>(co_) | (0xffu << 24));
+		return ColourRGBA(static_cast<unsigned int>(co_) | (maximumByte << 24));
 	}
 
 	constexpr ColourRGBA WithoutAlpha() const noexcept {
-		return ColourRGBA(co & 0xffffff);
+		return ColourRGBA(co & rgbMask);
 	}
 
 	constexpr ColourRGBA Opaque() const noexcept {
-		return ColourRGBA(co | (0xffu << 24));
+		return ColourRGBA(co | (maximumByte << 24));
 	}
 
 	constexpr unsigned int AsInteger() const noexcept {
@@ -232,18 +252,18 @@ public:
 	}
 
 	constexpr unsigned int OpaqueRGB() const noexcept {
-		return co & 0xffffff;
+		return co & rgbMask;
 	}
 
 	// Red, green, blue and alpha values as bytes 0..255
 	constexpr unsigned char GetRed() const noexcept {
-		return co & 0xff;
+		return co & maximumByte;
 	}
 	constexpr unsigned char GetGreen() const noexcept {
-		return (co >> 8) & 0xff;
+		return (co >> 8) & maximumByte;
 	}
 	constexpr unsigned char GetBlue() const noexcept {
-		return (co >> 16) & 0xff;
+		return (co >> 16) & maximumByte;
 	}
 	constexpr unsigned char GetAlpha() const noexcept {
 		return co >> 24;
@@ -251,20 +271,23 @@ public:
 
 	// Red, green, blue, and alpha values as float 0..1.0
 	constexpr float GetRedComponent() const noexcept {
-		return GetRed() / componentMaximum;
+		return ComponentAsFloat(GetRed());
 	}
 	constexpr float GetGreenComponent() const noexcept {
-		return GetGreen() / componentMaximum;
+		return ComponentAsFloat(GetGreen());
 	}
 	constexpr float GetBlueComponent() const noexcept {
-		return GetBlue() / componentMaximum;
+		return ComponentAsFloat(GetBlue());
 	}
 	constexpr float GetAlphaComponent() const noexcept {
-		return GetAlpha() / componentMaximum;
+		return ComponentAsFloat(GetAlpha());
 	}
 
 	constexpr bool operator==(const ColourRGBA &other) const noexcept {
 		return co == other.co;
+	}
+	constexpr bool operator!=(const ColourRGBA &other) const noexcept {
+		return co != other.co;
 	}
 
 	constexpr bool IsOpaque() const noexcept {
@@ -309,6 +332,9 @@ public:
 		return ColourRGBA(red, green, blue);
 	}
 };
+
+constexpr ColourRGBA white(maximumByte, maximumByte, maximumByte);
+constexpr ColourRGBA black(0x0, 0x0, 0x0);
 
 /**
 * Holds an RGBA colour and stroke width to stroke a shape.

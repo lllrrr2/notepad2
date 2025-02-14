@@ -1,6 +1,6 @@
 // Scintilla source code edit control
 /** @file XPM.h
- ** Define a classes to hold image data in the X Pixmap (XPM) and RGBA formats.
+ ** Define classes to hold image data in the X Pixmap (XPM) and RGBA formats.
  **/
 // Copyright 1998-2003 by Neil Hodgson <neilh@scintilla.org>
 // The License.txt file describes the conditions under which this software may be distributed.
@@ -15,9 +15,9 @@ class XPM final {
 	int height = 1;
 	int width = 1;
 	int nColours = 1;
+	int codeTransparent = ' ';
 	std::vector<unsigned char> pixels;
 	ColourRGBA colourCodeTable[256];
-	char codeTransparent = ' ';
 	ColourRGBA ColourFromCode(int ch) const noexcept;
 	void FillRun(Surface *surface, int code, int startX, int y, int x) const;
 public:
@@ -60,10 +60,10 @@ public:
 		return scale;
 	}
 	float GetScaledHeight() const noexcept {
-		return height / scale;
+		return static_cast<float>(height) / scale;
 	}
 	float GetScaledWidth() const noexcept {
-		return width / scale;
+		return static_cast<float>(width) / scale;
 	}
 	int CountBytes() const noexcept;
 	const unsigned char *Pixels() const noexcept;
@@ -75,7 +75,7 @@ public:
  * A collection of RGBAImage pixmaps indexed by integer id.
  */
 class RGBAImageSet final {
-	typedef std::map<int, std::unique_ptr<RGBAImage>> ImageMap;
+	using ImageMap = std::map<int, std::unique_ptr<RGBAImage>>;
 	ImageMap images;
 	mutable int height;	///< Memorize largest height of the set.
 	mutable int width;	///< Memorize largest width of the set.

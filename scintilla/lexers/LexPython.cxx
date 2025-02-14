@@ -1,4 +1,4 @@
-// This file is part of Notepad2.
+// This file is part of Notepad4.
 // See License.txt for details about distribution and modification.
 //! Lexer for Python.
 
@@ -49,38 +49,40 @@ constexpr bool IsPyStringStyle(int state) noexcept {
 	return state >= SCE_PY_STRING_SQ;
 }
 
+// https://docs.python.org/3/reference/lexical_analysis.html#literals
 struct EscapeSequence {
 	int outerState = SCE_PY_DEFAULT;
 	int digitsLeft = 0;
-	int numBase = 16;
+	bool hex = false;
 
-	// no highlight for name in '\N{name}'.
-	bool resetEscapeState(int state, int chNext) noexcept {
+	// highlight any character as escape sequence, no highlight for name in '\N{name}'.
+	void resetEscapeState(int state, int chNext) noexcept {
 		outerState = state;
-		digitsLeft = 0;
-		numBase = 16;
+		digitsLeft = 1;
+		hex = true;
 		if (chNext == 'x') {
 			digitsLeft = 3;
 		} else if (IsOctalDigit(chNext)) {
 			digitsLeft = 3;
-			numBase = 8;
-		} else if (AnyOf(chNext, '\\', '\'', '"', 'a', 'b', 'f', 'n', 'r', 't', 'v')) {
-			digitsLeft = 1;
+			hex = false;
 		} else if (IsPyString(state)) {
 			if (chNext == 'u') {
 				digitsLeft = 5;
 			} else if (chNext == 'U') {
 				digitsLeft = 9;
-			} else if (chNext == 'N') {
-				digitsLeft = 1;
 			}
 		}
-		return digitsLeft != 0;
 	}
 	bool atEscapeEnd(int ch) noexcept {
 		--digitsLeft;
-		return digitsLeft <= 0 || !IsADigit(ch, numBase);
+		return digitsLeft <= 0 || !IsOctalOrHex(ch, hex);
 	}
+};
+
+enum class FormattedStringPart {
+	None,
+	FormatSpec,
+	End,
 };
 
 struct FormattedStringState {
@@ -94,9 +96,9 @@ constexpr bool IsPyStringPrefix(int ch) noexcept {
 }
 
 inline void EnterPyStringState(StyleContext &sc) {
-	int ch = sc.ch | 0x20;
+	int ch = UnsafeLower(sc.ch);
 	int chNext = sc.chNext;
-	const int next = chNext | 0x20;
+	const int next = UnsafeLower(chNext);
 	int state = SCE_PY_IDENTIFIER;
 	int offset = 1;
 	if (ch == 'r') {
@@ -203,19 +205,32 @@ Sci_Position CheckPercentFormatSpecifier(const StyleContext &sc, LexAccessor &st
 		return 0;
 	}
 	if (IsDateTimeFormatSpecifier(sc.chNext)) {
+		// https://docs.python.org/3/library/optparse.html
+		if (AnyOf(sc.chNext, 'd', 'p')) {
+			char buf[8];
+			styler.GetRange(sc.currentPos + 1, sc.lineStartNext, buf, sizeof(buf));
+			if (StrStartsWith(buf, "prog")) {
+				keyLen = 5;
+				return 5;
+			}
+			if (StrEqual(buf, "default")) {
+				keyLen = 8;
+				return 8;
+			}
+		}
 		return 2;
 	}
 
 	Sci_PositionU pos = sc.currentPos + 1;
-	char ch = styler.SafeGetCharAt(pos);
+	char ch = styler[pos];
 	// 2. (optional) Mapping key
 	if (ch == '(') {
-		ch = styler.SafeGetCharAt(++pos);
+		ch = styler[++pos];
 		while (!IsInvalidMappingKey(ch)) {
-			ch = styler.SafeGetCharAt(++pos);
+			ch = styler[++pos];
 		}
 		if (ch == ')') {
-			ch = styler.SafeGetCharAt(++pos);
+			ch = styler[++pos];
 			keyLen = pos - sc.currentPos;
 		} else {
 			return 0;
@@ -223,30 +238,30 @@ Sci_Position CheckPercentFormatSpecifier(const StyleContext &sc, LexAccessor &st
 	}
 	// 3. (optional) Conversion flags
 	while (AnyOf(ch, '#', '0', '-', ' ', '+')) {
-		ch = styler.SafeGetCharAt(++pos);
+		ch = styler[++pos];
 	}
 	// 4. (optional) Minimum field width
 	if (ch == '*') {
-		ch = styler.SafeGetCharAt(++pos);
+		ch = styler[++pos];
 	} else {
 		while (IsADigit(ch)) {
-			ch = styler.SafeGetCharAt(++pos);
+			ch = styler[++pos];
 		}
 	}
 	// 5. (optional) Precision
 	if (ch == '.') {
-		ch = styler.SafeGetCharAt(++pos);
+		ch = styler[++pos];
 		if (ch == '*') {
-			ch = styler.SafeGetCharAt(++pos);
+			ch = styler[++pos];
 		} else {
 			while (IsADigit(ch)) {
-				ch = styler.SafeGetCharAt(++pos);
+				ch = styler[++pos];
 			}
 		}
 	}
 	// 6. (optional) Length modifier
 	if (ch == 'h' || ch == 'l' || ch == 'L') {
-		ch = styler.SafeGetCharAt(++pos);
+		ch = styler[++pos];
 	}
 	// 7. Conversion type
 	if (IsPercentFormatSpecifier(ch)) {
@@ -289,14 +304,14 @@ Sci_Position CheckBraceFormatSpecifier(const StyleContext &sc, LexAccessor &styl
 		pos += 2;
 	}
 	// [":" format_spec]
-	char ch = styler.SafeGetCharAt(pos);
+	char ch = styler[pos];
 	if (ch != ':') {
 		return pos - sc.currentPos;
 	}
 
-	ch = styler.SafeGetCharAt(++pos);
+	ch = styler[++pos];
 	if (ch == '%') {
-		const char chNext = styler.SafeGetCharAt(pos + 1);
+		const char chNext = styler[pos + 1];
 		if (IsDateTimeFormatSpecifier(chNext)) {
 			return pos + 2 - sc.currentPos;
 		}
@@ -307,35 +322,35 @@ Sci_Position CheckBraceFormatSpecifier(const StyleContext &sc, LexAccessor &styl
 		if (ch & 0x80) {
 			styler.GetCharacterAndWidth(pos, &width);
 		}
-		const char chNext = styler.SafeGetCharAt(pos + width);
+		const char chNext = styler[pos + width];
 		if (AnyOf(ch, '<', '>', '=', '^') || AnyOf(chNext, '<', '>', '=', '^')) {
 			pos += 1 + width;
-			ch = styler.SafeGetCharAt(pos);
+			ch = styler[pos];
 		}
 	}
 	// [sign][z][#]
 	if (ch == '+' || ch == '-' || ch == ' ') {
-		ch = styler.SafeGetCharAt(++pos);
+		ch = styler[++pos];
 	}
 	if (ch == 'z') { // PEP 682
-		ch = styler.SafeGetCharAt(++pos);
+		ch = styler[++pos];
 	}
 	if (ch == '#') {
-		ch = styler.SafeGetCharAt(++pos);
+		ch = styler[++pos];
 	}
 	// [0][width]
 	while (IsADigit(ch)) {
-		ch = styler.SafeGetCharAt(++pos);
+		ch = styler[++pos];
 	}
 	// [grouping_option]
 	if (ch == '_' || ch == ',') {
-		ch = styler.SafeGetCharAt(++pos);
+		ch = styler[++pos];
 	}
 	// [.precision]
 	if (ch == '.') {
-		ch = styler.SafeGetCharAt(++pos);
+		ch = styler[++pos];
 		while (IsADigit(ch)) {
-			ch = styler.SafeGetCharAt(++pos);
+			ch = styler[++pos];
 		}
 	}
 	// [type]
@@ -349,15 +364,6 @@ constexpr bool IsDocCommentTag(int state, int chNext) noexcept {
 	return IsPyString(state) && IsPyTripleQuotedString(state) && (chNext == 'p' || chNext == 't' || chNext == 'r');
 }
 
-enum {
-	PyLineStateMaskEmptyLine = 1 << 0,
-	PyLineStateMaskCommentLine = 1 << 1,
-	PyLineStateMaskTripleQuote = 1 << 2,
-	PyLineStateMaskCloseBrace = 1 << 3,
-	PyLineStateLineContinuation = 1 << 4,
-	PyLineStateStringInterpolation = 1 << 5,
-};
-
 //KeywordIndex++Autogenerated -- start of section automatically generated
 enum {
 	KeywordIndex_Keyword = 0,
@@ -367,13 +373,26 @@ enum {
 	KeywordIndex_Attribute = 4,
 	KeywordIndex_SpecialMethod = 5,
 	KeywordIndex_Class = 6,
+	MaxKeywordSize = 32,
 };
 //KeywordIndex--Autogenerated -- end of section automatically generated
 
+enum class KeywordType {
+	None = SCE_PY_DEFAULT,
+	Class = SCE_PY_CLASS,
+	Function = SCE_PY_FUNCTION_DEFINITION,
+};
+
+constexpr bool IsSpaceEquiv(int state) noexcept {
+	return state <= SCE_PY_TASKMARKER;
+}
+
 void ColourisePyDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int initStyle, LexerWordList keywordLists, Accessor &styler) {
-	int kwType = SCE_PY_DEFAULT;
+	KeywordType kwType = KeywordType::None;
 	int visibleChars = 0;
 	int visibleCharsBefore = 0;
+	int chBefore = 0;
+	int chPrevNonWhite = 0;
 	int prevIndentCount = 0;
 	int indentCount = 0;
 	int parenCount = 0;
@@ -381,7 +400,7 @@ void ColourisePyDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int initStyl
 	bool prevLineContinuation = false;
 	bool lineContinuation = false;
 	bool insideUrl = false;
-	bool insideFStringFormatSpec = false;
+	FormattedStringPart fstringPart = FormattedStringPart::None;
 	EscapeSequence escSeq;
 
 	std::vector<FormattedStringState> nestedState;
@@ -397,8 +416,12 @@ void ColourisePyDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int initStyl
 		lineState = styler.GetLineState(sc.currentLine - 1);
 		parenCount = (lineState >> 8) & 0xff;
 		prevIndentCount = lineState >> 16;
-		lineContinuation= (lineState & PyLineStateLineContinuation) != 0;
+		lineContinuation = (lineState & PyLineStateLineContinuation) != 0;
 		lineState = 0;
+	}
+	if (startPos != 0 && IsSpaceEquiv(initStyle)) {
+		// look back for better dict key colouring
+		LookbackNonWhite(styler, startPos, SCE_PY_TASKMARKER, chPrevNonWhite, initStyle);
 	}
 
 	while (sc.More()) {
@@ -416,34 +439,34 @@ void ColourisePyDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int initStyl
 
 		case SCE_PY_IDENTIFIER:
 			if (!IsIdentifierCharEx(sc.ch)) {
-				char s[128];
+				char s[MaxKeywordSize];
 				sc.GetCurrent(s, sizeof(s));
-				if (keywordLists[KeywordIndex_Keyword]->InList(s)) {
+				if (keywordLists[KeywordIndex_Keyword].InList(s)) {
 					sc.ChangeState(SCE_PY_WORD);
 					if (StrEqual(s, "def")) {
-						kwType = SCE_PY_FUNCTION_DEFINITION;
+						kwType = KeywordType::Function;
 					} else if (StrEqualsAny(s, "class", "raise", "except")) {
-						kwType = SCE_PY_CLASS;
+						kwType = KeywordType::Class;
 					}
-				} else if (keywordLists[KeywordIndex_Type]->InList(s)) {
+				} else if (keywordLists[KeywordIndex_Type].InList(s)) {
 					sc.ChangeState(SCE_PY_WORD2);
-				} else if (keywordLists[KeywordIndex_BuiltinConstant]->InList(s)) {
+				} else if (keywordLists[KeywordIndex_BuiltinConstant].InList(s)) {
 					sc.ChangeState(SCE_PY_BUILTIN_CONSTANT);
-				} else if (keywordLists[KeywordIndex_BuiltinFunction]->InListPrefixed(s, '(')) {
+				} else if (keywordLists[KeywordIndex_BuiltinFunction].InListPrefixed(s, '(')) {
 					sc.ChangeState(SCE_PY_BUILTIN_FUNCTION);
-				} else if (keywordLists[KeywordIndex_Attribute]->InList(s)) {
+				} else if (keywordLists[KeywordIndex_Attribute].InList(s)) {
 					sc.ChangeState(SCE_PY_ATTRIBUTE);
-				} else if (keywordLists[KeywordIndex_SpecialMethod]->InListPrefixed(s, '(')) {
+				} else if (keywordLists[KeywordIndex_SpecialMethod].InListPrefixed(s, '(')) {
 					sc.ChangeState(SCE_PY_OBJECT_FUNCTION);
-				} else if (keywordLists[KeywordIndex_Class]->InList(s)) {
+				} else if (keywordLists[KeywordIndex_Class].InList(s)) {
 					sc.ChangeState(SCE_PY_CLASS);
-				} else if (kwType != SCE_PY_DEFAULT) {
-					sc.ChangeState(kwType);
+				} else if (kwType != KeywordType::None) {
+					sc.ChangeState(static_cast<int>(kwType));
 				} else if (sc.GetLineNextChar() == '(') {
 					sc.ChangeState(SCE_PY_FUNCTION);
 				}
 				if (sc.state != SCE_PY_WORD) {
-					kwType = SCE_PY_DEFAULT;
+					kwType = KeywordType::None;
 				}
 				sc.SetState(SCE_PY_DEFAULT);
 			}
@@ -485,7 +508,7 @@ void ColourisePyDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int initStyl
 		case SCE_PY_TRIPLE_RAWBYTES_SQ:
 		case SCE_PY_TRIPLE_RAWBYTES_DQ:
 			if (sc.atLineStart && !lineContinuation) {
-				if (!IsPyTripleQuotedString(sc.state)) {
+				if (fstringPart == FormattedStringPart::None && !IsPyTripleQuotedString(sc.state)) {
 					sc.SetState(SCE_PY_DEFAULT);
 					break;
 				}
@@ -501,7 +524,8 @@ void ColourisePyDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int initStyl
 					if (sc.chNext == '\\' || sc.chNext == '\'' || sc.chNext == '\"') {
 						sc.Forward();
 					}
-				} else if (escSeq.resetEscapeState(sc.state, sc.chNext)) {
+				} else {
+					escSeq.resetEscapeState(sc.state, sc.chNext);
 					sc.SetState(SCE_PY_ESCAPECHAR);
 					sc.Forward();
 				}
@@ -512,7 +536,7 @@ void ColourisePyDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int initStyl
 				if ((sc.ch == '\'') ^ IsPyDoubleQuotedString(sc.state)) {
 					int offset = 0;
 					if (IsPyTripleQuotedString(sc.state)) {
-						if (sc.chNext == sc.ch && sc.GetRelative(2) == sc.ch) {
+						if (sc.MatchNext()) {
 							offset = 3;
 						}
 					} else {
@@ -523,6 +547,14 @@ void ColourisePyDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int initStyl
 						if (!nestedState.empty() && nestedState.back().state == sc.state) {
 							nestedState.pop_back();
 						}
+						if ((sc.state == SCE_PY_STRING_SQ || sc.state == SCE_PY_STRING_DQ)
+							&& (chBefore == ',' || chBefore == '{')) {
+							// dict string key
+							const int chNext = sc.GetLineNextChar();
+							if (chNext == ':') {
+								sc.ChangeState(SCE_PY_KEY);
+							}
+						}
 						sc.SetState(SCE_PY_DEFAULT);
 					}
 				}
@@ -530,18 +562,18 @@ void ColourisePyDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int initStyl
 
 			case '{':
 				if (IsPyString(sc.state)) {
-					if (sc.chNext == '{') {
+					if (sc.chNext == '{' && fstringPart == FormattedStringPart::None) {
 						escSeq.outerState = sc.state;
 						escSeq.digitsLeft = 1;
 						sc.SetState(SCE_PY_ESCAPECHAR);
 						sc.Forward();
 					} else if (IsPyFormattedString(sc.state)) {
 						if (nestedState.empty()) {
+							fstringPart = FormattedStringPart::None;
 							nestedState.push_back({sc.state, 1, 0});
 						} else {
 							nestedState.back().nestedLevel += 1;
 						}
-						insideFStringFormatSpec = false;
 						sc.SetState(SCE_PY_OPERATOR2);
 						sc.ForwardSetState(SCE_PY_DEFAULT);
 					} else if (sc.chNext == '}' || sc.chNext == '!' || sc.chNext == ':' || IsIdentifierCharEx(sc.chNext)) {
@@ -560,6 +592,7 @@ void ColourisePyDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int initStyl
 							if (state.nestedLevel > 1) {
 								--state.nestedLevel;
 							} else {
+								fstringPart = FormattedStringPart::None;
 								nestedState.pop_back();
 							}
 						}
@@ -567,7 +600,6 @@ void ColourisePyDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int initStyl
 							const int state = sc.state;
 							sc.SetState(SCE_PY_OPERATOR2);
 							sc.ForwardSetState(state);
-							insideFStringFormatSpec = false;
 							continue;
 						}
 					}
@@ -621,7 +653,7 @@ void ColourisePyDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int initStyl
 
 			case '!':
 			case ':':
-				if (insideFStringFormatSpec) {
+				if (fstringPart == FormattedStringPart::FormatSpec) {
 					const Sci_Position length = CheckBraceFormatSpecifier(sc, styler);
 					if (length != 0) {
 						const int state = sc.state;
@@ -736,27 +768,24 @@ void ColourisePyDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int initStyl
 					lineState = PyLineStateMaskCommentLine;
 				}
 				sc.SetState(SCE_PY_COMMENTLINE);
-			} else if (sc.ch == '\'') {
+			} else if (sc.ch == '\'' || sc.ch == '\"') {
 				insideUrl = false;
-				if (sc.MatchNext('\'', '\'')) {
-					sc.SetState(SCE_PY_TRIPLE_STRING_SQ);
+				if (sc.MatchNext()) {
+					sc.SetState((sc.ch == '\'') ? SCE_PY_TRIPLE_STRING_SQ : SCE_PY_TRIPLE_STRING_DQ);
 					sc.Advance(2);
 				} else {
-					sc.SetState(SCE_PY_STRING_SQ);
+					chBefore = chPrevNonWhite;
+					sc.SetState((sc.ch == '\'') ? SCE_PY_STRING_SQ : SCE_PY_STRING_DQ);
 				}
-			} else if (sc.ch == '\"') {
-				insideUrl = false;
-				if (sc.MatchNext('\"', '\"')) {
-					sc.SetState(SCE_PY_TRIPLE_STRING_DQ);
-					sc.Advance(2);
-				} else {
-					sc.SetState(SCE_PY_STRING_DQ);
-				}
-			} else if (IsADigit(sc.ch) || (sc.ch == '.' && IsADigit(sc.chNext))) {
+			} else if (IsNumberStart(sc.ch, sc.chNext)) {
 				sc.SetState(SCE_PY_NUMBER);
 			} else if (IsPyStringPrefix(sc.ch)) {
 				insideUrl = false;
 				EnterPyStringState(sc);
+				if (IsPyFormattedString(sc.state) && !nestedState.empty()) {
+					// PEP 701 nested f-string
+					nestedState.push_back({sc.state, 1, 0});
+				}
 			} else if (IsIdentifierStartEx(sc.ch)) {
 				sc.SetState(SCE_PY_IDENTIFIER);
 			} else if (sc.ch == '@') {
@@ -765,8 +794,10 @@ void ColourisePyDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int initStyl
 				} else {
 					sc.SetState(SCE_PY_OPERATOR);
 				}
-			} else if (isoperator(sc.ch)) {
+			} else if (IsAGraphic(sc.ch) && sc.ch != '\\') {
+				kwType = KeywordType::None;
 				const bool interpolating = !nestedState.empty();
+				sc.SetState(interpolating ? SCE_PY_OPERATOR2 : SCE_PY_OPERATOR);
 				int braceCount = 0;
 				if (sc.ch == '{' || sc.ch == '[' || sc.ch == '(') {
 					if (interpolating) {
@@ -793,13 +824,11 @@ void ColourisePyDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int initStyl
 				if (interpolating) {
 					const FormattedStringState &state = nestedState.back();
 					if (state.parenCount == 0 && IsPyFormattedStringEnd(sc, braceCount)) {
-						insideFStringFormatSpec = sc.ch != '}';
-						sc.SetState(state.state);
+						fstringPart = (sc.ch == '}') ? FormattedStringPart::End : FormattedStringPart::FormatSpec;
+						sc.ChangeState(state.state);
 						continue;
 					}
 				}
-				sc.SetState(interpolating ? SCE_PY_OPERATOR2 : SCE_PY_OPERATOR);
-				kwType = SCE_PY_DEFAULT;
 			}
 		}
 
@@ -812,6 +841,9 @@ void ColourisePyDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int initStyl
 		}
 		if (!isspacechar(sc.ch)) {
 			visibleChars++;
+			if (!IsSpaceEquiv(sc.state)) {
+				chPrevNonWhite = sc.ch;
+			}
 		}
 		if (sc.atLineEnd) {
 			if (lineContinuation) {
@@ -823,21 +855,17 @@ void ColourisePyDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int initStyl
 			lineState |= (indentCount << 16) | (parenCount << 8);
 			prevIndentCount = indentCount;
 			prevLineContinuation = lineContinuation;
+			lineContinuation = false;
 			if (sc.state != SCE_PY_COMMENTLINE && sc.LineEndsWith('\\')) {
 				lineContinuation = true;
 				lineState |= PyLineStateLineContinuation;
-			} else {
-				lineContinuation = false;
-				if (!nestedState.empty()) {
-					const int state = nestedState.back().state;
-					if (!IsPyTripleQuotedString(state)) {
-						nestedState.pop_back();
-						sc.SetState(state);
-					}
-				}
 			}
 			if (!nestedState.empty()) {
-				lineState |= PyLineStateStringInterpolation | PyLineStateMaskTripleQuote;
+				// PEP 701 allows new line in f-expression
+				lineState |= PyLineStateStringInterpolation;
+				if (IsPyTripleQuotedString(nestedState.front().state)) {
+					lineState |= PyLineStateMaskTripleQuote;
+				}
 			} else if (IsPyStringStyle(sc.state) && IsPyTripleQuotedString(sc.state)) {
 				lineState |= PyLineStateMaskTripleQuote;
 			} else if (visibleChars == 0) {
@@ -845,8 +873,8 @@ void ColourisePyDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int initStyl
 			}
 			styler.SetLineState(sc.currentLine, lineState);
 			lineState = 0;
-			kwType = SCE_PY_DEFAULT;
-			insideFStringFormatSpec = false;
+			kwType = KeywordType::None;
+			fstringPart = FormattedStringPart::None;
 			visibleChars = 0;
 			visibleCharsBefore = 0;
 			indentCount = 0;
@@ -892,7 +920,7 @@ void FoldPyDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int /*initStyle*/
 	Sci_Line lineCurrent = styler.GetLine(startPos);
 	FoldLineState statePrev(styler.GetLineState(lineCurrent - 1));
 	FoldLineState stateCurrent(styler.GetLineState(lineCurrent));
-	while (lineCurrent > 0) {
+	while (lineCurrent != 0) {
 		lineCurrent--;
 		stateCurrent = statePrev;
 		statePrev = FoldLineState(styler.GetLineState(lineCurrent - 1));
@@ -902,21 +930,21 @@ void FoldPyDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int /*initStyle*/
 	}
 
 	while (lineCurrent <= maxLines) {
-		int lev = stateCurrent.indentCount + SC_FOLDLEVELBASE;
 		if (stateCurrent.TripleQuoted()) {
-			statePrev = stateCurrent;
-			styler.SetLevel(lineCurrent, lev | SC_FOLDLEVELHEADERFLAG);
-			int lineState;
-			do {
+			const int skipLevel = stateCurrent.indentCount + SC_FOLDLEVELBASE;
+			styler.SetLevel(lineCurrent, skipLevel | SC_FOLDLEVELHEADERFLAG);
+			while (true) {
 				lineCurrent++;
-				lineState = styler.GetLineState(lineCurrent);
-				styler.SetLevel(lineCurrent, lev + 1);
-			} while (lineState & PyLineStateMaskTripleQuote);
-			lineCurrent++;
-			stateCurrent = FoldLineState(styler.GetLineState(lineCurrent));
-			if (stateCurrent.Empty()) {
-				stateCurrent.indentCount = statePrev.indentCount;
+				styler.SetLevel(lineCurrent, skipLevel + 1);
+				const int lineState = styler.GetLineState(lineCurrent);
+				if ((lineState & PyLineStateMaskTripleQuote) == 0) {
+					break;
+				}
 			}
+
+			lineCurrent++;
+			statePrev = stateCurrent;
+			stateCurrent = FoldLineState(styler.GetLineState(lineCurrent));
 			continue;
 		}
 
@@ -930,18 +958,24 @@ void FoldPyDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int /*initStyle*/
 			stateNext = FoldLineState(styler.GetLineState(lineNext));
 		}
 
+		int currentLevel = stateCurrent.indentCount;
 		int levelAfterBlank = stateNext.indentCount;
-		if (!stateCurrent.Empty()) {
-			if (stateNext.CloseBrace() && levelAfterBlank < stateCurrent.indentCount) {
-				levelAfterBlank = stateCurrent.indentCount;
+		if (stateCurrent.Empty()) {
+			if (statePrev.TripleQuoted()) {
+				stateCurrent.indentCount = statePrev.indentCount;
+				currentLevel = levelAfterBlank;
 			}
-			if ((stateCurrent.indentCount < levelAfterBlank)) {
-				lev |= SC_FOLDLEVELHEADERFLAG;
-			} else if (stateCurrent.CloseBrace() && stateCurrent.indentCount < statePrev.indentCount) {
-				lev = statePrev.indentCount + SC_FOLDLEVELBASE;
+		} else {
+			if (stateNext.CloseBrace() && levelAfterBlank < currentLevel) {
+				levelAfterBlank = currentLevel;
+			}
+			if (stateCurrent.CloseBrace() && currentLevel < statePrev.indentCount) {
+				currentLevel = statePrev.indentCount;
+			} else if (currentLevel < levelAfterBlank) {
+				currentLevel |= SC_FOLDLEVELHEADERFLAG;
 			}
 		}
-		styler.SetLevel(lineCurrent, lev);
+		styler.SetLevel(lineCurrent, currentLevel + SC_FOLDLEVELBASE);
 		lineCurrent++;
 
 		if (lineCurrent < lineNext) {
@@ -983,4 +1017,4 @@ void FoldPyDoc(Sci_PositionU startPos, Sci_Position lengthDoc, int /*initStyle*/
 
 }
 
-LexerModule lmPython(SCLEX_PYTHON, ColourisePyDoc, "python", FoldPyDoc);
+extern const LexerModule lmPython(SCLEX_PYTHON, ColourisePyDoc, "python", FoldPyDoc);

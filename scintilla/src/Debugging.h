@@ -52,6 +52,18 @@ inline DerivedReference down_cast(Base &ref) noexcept {
 	#define CLANG_ANALYZER_NORETURN
 #endif
 
+#if defined(__SANITIZE_ADDRESS__)
+	#define USE_ADDRESS_SANITIZER	1
+#elif defined(__clang__)
+	#if __has_feature(address_sanitizer)
+		#define USE_ADDRESS_SANITIZER	1
+	#else
+		#define USE_ADDRESS_SANITIZER	0
+	#endif
+#else
+	#define USE_ADDRESS_SANITIZER	0
+#endif
+
 /**
  * Platform namespace used to segregate debugging functions.
  */
@@ -70,8 +82,10 @@ void Assert(const char *c, const char *file, int line) noexcept CLANG_ANALYZER_N
 
 #ifdef NDEBUG
 #define PLATFORM_ASSERT(c) ((void)0)
-#else
+#elif defined(TRACE)
 #define PLATFORM_ASSERT(c) ((c) ? (void)(0) : Scintilla::Internal::Platform::Assert(#c, __FILE__, __LINE__))
+#else
+#define PLATFORM_ASSERT(c)	assert(c)
 #endif
 
 }

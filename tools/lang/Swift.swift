@@ -1,13 +1,14 @@
-// 5.6 https://docs.swift.org/
-// https://docs.swift.org/swift-book/
+// 6.0 https://www.swift.org/
 // https://swift.org/documentation/
-// https://github.com/apple/swift
+// https://github.com/apple/swift-evolution
 
 //! keywords		===========================================================
 // Keywords and Punctuation
-// https://docs.swift.org/swift-book/ReferenceManual/LexicalStructure.html
+// https://docs.swift.org/swift-book/documentation/the-swift-programming-language/lexicalstructure
 // Keywords used in declarations
 associatedtype
+borrowing
+class consuming
 class
 deinit
 enum extension
@@ -35,7 +36,7 @@ switch
 where while
 
 // Keywords used in expressions and types
-Any as
+Any as await
 catch
 false
 is
@@ -63,29 +64,37 @@ Type
 unowned
 weak willSet
 
-async await
+macro package
+// Asynchronous Functions and Methods
+async
+// Actor Declaration
+actor nonisolated
 
 //! directive		===========================================================
 // Keywords that begin with a number sign
 // Compiler Control Statements
-// https://docs.swift.org/swift-book/ReferenceManual/Statements.html
+// https://docs.swift.org/swift-book/documentation/the-swift-programming-language/statements#Compiler-Control-Statements
 #if
 #elseif
 #else
 #endif
 #sourceLocation(file: file-path, line: line-number)
+#sourceLocation()
 #error(diagnostic-message)
 #warning(diagnostic-message)
 #available(availability-arguments)
+#unavailable(availability-arguments)
 
 // Literal Expression
-// https://docs.swift.org/swift-book/ReferenceManual/Expressions.html
+// https://docs.swift.org/swift-book/documentation/the-swift-programming-language/expressions#Literal-Expression
+// https://developer.apple.com/documentation/swift/macros
 #file
 #fileID
 #filePath
 #line
 #column
 #function
+#externalMacro(module: String,type: String)
 #dsohandle
 // playground-literal
 #colorLiteral(red: expression, green: expression, blue: expression, alpha: expression)
@@ -100,27 +109,30 @@ async await
 #keyPath(property name)
 
 //! attribute		===========================================================
-// https://docs.swift.org/swift-book/ReferenceManual/Attributes.html
+// https://docs.swift.org/swift-book/documentation/the-swift-programming-language/attributes
 // Declaration Attributes
+@attached()
 @available()
+@backDeployed()
 @discardableResult
 @dynamicCallable
 @dynamicMemberLookup
+@freestanding()
 @frozen
 @GKInspectable
 @inlinable
 @main
 @nonobjc
-@NSApplicationMain
 @NSCopying
 @NSManaged
 @objc
 @objcMembers
+@preconcurrency
 @propertyWrapper
 @resultBuilder
 @requires_stored_property_inits
 @testable
-@UIApplicationMain
+@unchecked
 @usableFromInline
 @warn_unqualified_access
 
@@ -128,13 +140,14 @@ async await
 @autoclosure
 @convention
 @escaping
+@Sendable
 
 // Switch Case Attributes
 @unknown
 
 //! library			===========================================================
 // Swift Standard Library
-// https://developer.apple.com/documentation/swift/swift_standard_library/
+// https://developer.apple.com/documentation/swift/swift-standard-library
 // Numbers and Basic Values
 @frozen struct Bool
 @frozen struct Int
@@ -154,6 +167,7 @@ protocol Error
 @frozen struct Int16
 @frozen struct Int32
 @frozen struct Int64
+@frozen struct Float16
 typealias Float32 = Float
 typealias Float64 = Double
 @frozen struct SystemRandomNumberGenerator

@@ -8,17 +8,15 @@
 
 namespace Lexilla {
 
-class PropSetSimple final {
-	void *impl;
-public:
-	PropSetSimple();
-	// Deleted so PropSetSimple objects can not be copied.
-	PropSetSimple(const PropSetSimple&) = delete;
-	PropSetSimple(PropSetSimple&&) = delete;
-	PropSetSimple &operator=(const PropSetSimple&) = delete;
-	PropSetSimple &operator=(PropSetSimple&&) = delete;
-	~PropSetSimple();
+#define PropSetSimpleUseMap		0
 
+class PropSetSimple final {
+#if PropSetSimpleUseMap
+	std::map<std::string, std::string, std::less<>> props;
+#else
+	std::vector<std::pair<std::string, std::string>> props;
+#endif
+public:
 	bool Set(std::string_view key, std::string_view val);
 	const char *Get(std::string_view key) const;
 	int GetInt(const char *key, size_t keyLen, int defaultValue = 0) const;

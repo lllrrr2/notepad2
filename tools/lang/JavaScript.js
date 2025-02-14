@@ -1,9 +1,15 @@
 // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Lexical_grammar
-// 2020 11.0 https://www.ecma-international.org/publications/standards/Ecma-262.htm
+// https://ecma-international.org/publications-and-standards/standards/ecma-262/
+// 2020 https://tc39.es/ecma262/2020/
 // 2021 https://tc39.es/ecma262/2021/
-// 2022 https://tc39.es/ecma262/
+// 2022 https://tc39.es/ecma262/2022/
+// 2023 https://tc39.es/ecma262/2023/
+// 2024 https://tc39.es/ecma262/2024/
+// 2025 https://tc39.es/ecma262/
 
 //! keywords
+// https://tc39.es/ecma262/#sec-keywords-and-reserved-words
+// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Lexical_grammar#keywords
 async await
 break
 case catch class const continue
@@ -21,12 +27,14 @@ yield
 let
 static
 
+// https://tc39.es/ecma262/#sec-global-object
 null true false
 globalThis
 Infinity
 NaN
 undefined
 arguments
+get set of
 
 //! future reserved words
 enum implements interface package private protected public
@@ -41,8 +49,8 @@ enum implements interface package private protected public
 // import.meta // 2020
 
 //! directive		===========================================================
-// https://www.ecma-international.org/ecma-262/11.0/index.html#sec-imports
-// https://www.ecma-international.org/ecma-262/11.0/index.html#sec-exports
+// https://tc39.es/ecma262/#sec-imports
+// https://tc39.es/ecma262/#sec-exports
 import as from
 import(path) // 2020
 export as
@@ -133,6 +141,7 @@ require(path)
  */
 
 //! API				===========================================================
+// https://tc39.es/ecma262/#sec-function-properties-of-the-global-object
 eval(x)
 isFinite(number)
 isNaN(number)
@@ -158,6 +167,8 @@ Object([value]) {
 	getOwnPropertyNames(O)
 	getOwnPropertySymbols(O)
 	getPrototypeOf(O)
+	groupBy(items, callbackfn) // 2024
+	hasOwn(O, P) // 2022
 	is(value1, value2)
 	isExtensible(O)
 	isFrozen(O)
@@ -215,6 +226,7 @@ Symbol([description]) {
 }
 
 Error(message) {
+	cause // 2022
 	message
 	name
 
@@ -361,6 +373,7 @@ String(value) {
 	raw(template, ...substitutions)
 	length
 	prototype:
+		at(index) // 2022
 		charAt(pos)
 		charCodeAt(pos)
 		codePointAt(pos)
@@ -368,6 +381,7 @@ String(value) {
 		endsWith(searchString [, endPosition])
 		includes(searchString [, position])
 		indexOf(searchString [, position])
+		isWellFormed() // 2024
 		lastIndexOf(searchString [, position])
 		localeCompare(that [, reserved1 [, reserved2]])
 		match(regexp)
@@ -387,6 +401,7 @@ String(value) {
 		toLocaleUpperCase([reserved1 [, reserved2]])
 		toLowerCase()
 		toUpperCase()
+		toWellFormed() // 2024
 		trim()
 		trimEnd() // 2019
 		trimStart() // 2019
@@ -407,6 +422,8 @@ String(value) {
 		strike()
 		sub()
 		sup()
+		trimLeft()
+		trimRight()
 
 }
 
@@ -434,6 +451,7 @@ Array(...items) {
 	of(...items)
 	length
 	prototype:
+		at(index) // 2022
 		concat(...arguments)
 		copyWithin(target, start [, end])
 		entries()
@@ -442,6 +460,8 @@ Array(...items) {
 		filter(callbackfn [, thisArg])
 		find(predicate [, thisArg])
 		findIndex(predicate [, thisArg])
+		findLast(predicate [, thisArg]) // 2023
+		findLastIndex(predicate [, thisArg]) // 2023
 		flat([depth]) // 2019
 		flatMap(mapperFunction [, thisArg]) // 2019
 		forEach(callbackfn [, thisArg])
@@ -461,8 +481,12 @@ Array(...items) {
 		some(callbackfn [, thisArg])
 		sort(comparefn)
 		splice(start, deleteCount, ...items)
+		toReversed() // 2023
+		toSorted(comparefn) // 2023
+		toSpliced(start, skipCount, ...items) // 2023
 		unshift(...items)
 		values()
+		with(index, value) // 2023
 		iterator
 		unscopables
 
@@ -488,6 +512,7 @@ Array(...items) {
 }
 
 Map([iterable]) {
+	groupBy(items, callbackfn) // 2024
 	prototype:
 		clear()
 		delete(key)
@@ -583,6 +608,7 @@ Atomics {
 	store(typedArray, index, value)
 	sub(typedArray, index, value)
 	wait(typedArray, index, value, timeout)
+	waitAsync(typedArray, index, value, timeout) // 2024
 	wake(typedArray, index, count)
 	xor(typedArray, index, value)
 }
@@ -623,6 +649,7 @@ Promise(executor) {
 	any(iterable) // 2021
 	reject(r)
 	resolve(x)
+	withResolvers() // 2024
 	prototype:
 		catch(onRejected)
 		finally(onFinally)
@@ -652,8 +679,8 @@ Proxy(target, handler) {
 	revocable(target, handler)
 }
 
-// JScript
-// https://docs.microsoft.com/en-us/previous-versions/ms950396(v=msdn.10)
+// Windows Script Host
+// https://learn.microsoft.com/en-us/previous-versions/ms950396(v=msdn.10)
 // https://developer.mozilla.org/en-US/docs/Archive/Web/JavaScript/Microsoft_Extensions
 ActiveXObject(servername.typename[, location])
 Debug {
@@ -673,14 +700,7 @@ VBArray {
 	toArray()
 	ubound(dimension)
 }
-// Windows Script Host
-// https://msdn.microsoft.com/en-us/library/9bbdkx3k(v=msdn.10)
 WScript {
-	//CreateObject(strProgID[,strPrefix])
-	//Echo()
-	//Exec(strCommand)
-	//GetObject(strPathname [,strProgID], [strPrefix])
-	//Quit()
 }
 
 // https://developer.mozilla.org/en-US/docs/Web/API
@@ -737,22 +757,22 @@ EventTarget() {
 	nodeType
 	nodeValue
 	ownerDocument
-	parentNode
 	parentElement
+	parentNode
 	previousSibling
 	textContent
 	appendChild(aChild)
 	cloneNode([deep])
 	compareDocumentPosition(otherNode)
 	contains(otherNode)
-	getRootNode(options)
+	getRootNode([options])
 	hasChildNodes()
 	insertBefore(newNode, referenceNode)
 	isDefaultNamespace(namespaceURI)
 	isEqualNode(otherNode)
 	isSameNode(otherNode)
-	lookupPrefix()
 	lookupNamespaceURI(prefix)
+	lookupPrefix(namespace)
 	normalize()
 	removeChild(child)
 	replaceChild(newChild, oldChild)
@@ -760,15 +780,20 @@ EventTarget() {
 
 // https://developer.mozilla.org/en-US/docs/Web/API/Element
 {
+	assignedSlot
 	attributes
+	childElementCount
+	children
 	classList
 	className
 	clientHeight
 	clientLeft
 	clientTop
 	clientWidth
+	firstElementChild
 	id
 	innerHTML
+	lastElementChild
 	localName
 	namespaceURI
 	nextElementSibling
@@ -781,10 +806,21 @@ EventTarget() {
 	scrollTop
 	scrollWidth
 	shadowRoot
-	assignedSlot
-	attachShadow(shadowRootInit)
+	slot
+	tagName
+	after(node1, node2, /* ... ,*/ nodeN)
+	animate(keyframes, options)
+	append(param1, param2, /* ... ,*/ paramN)
+	attachShadow(options)
+	before(param1, param2, /* ... ,*/ paramN)
+	checkVisibility([options])
+	closest(selectors)
+	computedStyleMap()
+	getAnimations([options])
 	getAttribute(attributeName)
 	getAttributeNames()
+	getAttributeNode(attrName)
+	getAttributeNodeNS(namespace, nodeName)
 	getAttributeNS(namespace, name)
 	getBoundingClientRect()
 	getClientRects()
@@ -798,18 +834,31 @@ EventTarget() {
 	insertAdjacentElement(position, element)
 	insertAdjacentHTML(position, text)
 	insertAdjacentText(position, element)
+	matches(selectorString)
+	prepend(param1, param2, /* ... ,*/ paramN)
 	querySelector(selectors)
 	querySelectorAll(selectors)
 	releasePointerCapture(pointerId)
+	remove()
 	removeAttribute(attrName)
+	removeAttributeNode(attributeNode)
 	removeAttributeNS(namespace, attrName)
+	replaceChildren(param1, param2, /* ... ,*/ paramN)
+	replaceWith(param1, param2, /* ... ,*/ paramN)
+	requestFullscreen([options])
+	requestPointerLock([options])
 	scroll(x-coord, y-coord)
 	scroll(options)
 	scrollBy(x-coord, y-coord)
 	scrollBy(options)
+	scrollIntoView()
+	scrollIntoView(alignToTop)
+	scrollIntoView(scrollIntoViewOptions)
 	scrollTo(x-coord, y-coord)
 	scrollTo(options)
 	setAttribute(name, value)
+	setAttributeNode(attribute)
+	setAttributeNodeNS(attributeNode)
 	setAttributeNS(namespace, name, value)
 	setPointerCapture(pointerId)
 	toggleAttribute(name [, force])
@@ -817,94 +866,122 @@ EventTarget() {
 
 // https://developer.mozilla.org/en-US/docs/Web/API/Document
 Document() {
+	activeElement
+	adoptedStyleSheets
 	body
 	characterSet
+	childElementCount
+	children
+	compatMode
+	contentType
+	cookie
+	currentScript
+	defaultView
+	designMode
+	dir
 	doctype
 	documentElement
 	documentURI
+	domain
 	embeds
+	firstElementChild
 	fonts
 	forms
+	fullscreenElement
+	fullscreenEnabled
 	head
 	hidden
 	images
 	implementation
-	links
-	plugins
-	scripts
-	scrollingElement
-	visibilityState
-	childElementCount
-	children
-	firstElementChild
 	lastElementChild
-	// Extensions
-	cookie
-	defaultView
-	designMode
-	dir
-	domain
 	lastModified
+	links
 	location
+	pictureInPictureElement
+	pictureInPictureEnabled
+	plugins
+	pointerLockElement
 	readyState
 	referrer
+	scripts
+	scrollingElement
+	styleSheets
+	timeline
 	title
 	URL
-	activeElement
-	fullscreenElement
+	visibilityState
+
 	// Methods
 	adoptNode(externalNode)
+	append(param1, param2, /* ... ,*/ paramN)
+	caretPositionFromPoint(x, y)
+	close()
 	createAttribute(name)
+	createAttributeNS(namespaceURI, qualifiedName)
 	createCDATASection(data)
 	createComment(data)
 	createDocumentFragment()
 	createElement(tagName[, options])
 	createElementNS(namespaceURI, qualifiedName[, options])
+	createExpression(xpathText, namespaceURLMapper)
 	createNodeIterator(root[, whatToShow[, filter]])
+	createNSResolver(node)
 	createProcessingInstruction(target, data)
 	createRange()
 	createTextNode(data)
-	createTreeWalker(root, whatToShow[, filter[, entityReferenceExpansion]])
+	createTreeWalker(root, whatToShow, filter)
+	elementFromPoint(x, y)
+	elementsFromPoint(x, y)
+	evaluate(xpathExpression, contextNode, namespaceResolver, resultType, result)
+	exitFullscreen()
+	exitPictureInPicture()
+	getAnimations()
+	getElementById(id)
 	getElementsByClassName(names)
+	getElementsByName(name)
 	getElementsByTagName(name)
 	getElementsByTagNameNS(namespace, name)
+	getSelection()
+	hasFocus()
+	hasStorageAccess()
 	importNode(externalNode [, deep])
-	getElementById(id)
+	open()
+	prepend(param1, param2, /* ... ,*/ paramN)
 	querySelector(selectors)
 	querySelectorAll(selectors)
-	createExpression(xpathText, namespaceURLMapper)
-	createNSResolver(node)
-	evaluate(xpathExpression, contextNode, namespaceResolver, resultType, result)
-	// Extension
-	close()
-	getElementsByName(name)
-	hasFocus()
-	open()
+	replaceChildren(param1, param2, /* ... ,*/ paramN)
+	requestStorageAccess()
 	write(markup)
 	writeln(line)
-	elementFromPoint(x, y)
 }
 
 // https://developer.mozilla.org/en-US/docs/Web/API/Window
 {
+	caches
+	clientInformation
+	closed
 	console
-	customElements
 	crypto
+	customElements
+	devicePixelRatio
 	document
 	event
 	frameElement
 	frames
+	fullScreen
 	history
+	indexedDB
 	innerHeight
 	innerWidth
 	length
+	localStorage
 	location
 	locationbar
-	localStorage
 	menubar
 	name
 	navigator
 	opener
+	origin
 	outerHeight
 	outerWidth
 	pageXOffset
@@ -913,10 +990,10 @@ Document() {
 	performance
 	personalbar
 	screen
-	screenX
 	screenLeft
-	screenY
 	screenTop
+	screenX
+	screenY
 	scrollbars
 	scrollX
 	scrollY
@@ -926,9 +1003,12 @@ Document() {
 	statusbar
 	toolbar
 	top
+	visualViewport
 	window
 	alert(message)
 	blur()
+	cancelAnimationFrame(requestID)
+	cancelIdleCallback(handle)
 	close()
 	confirm(message)
 	focus()
@@ -942,6 +1022,7 @@ Document() {
 	print()
 	prompt(message, default)
 	requestAnimationFrame(callback)
+	requestIdleCallback(callback[, options])
 	resizeBy(xDelta, yDelta)
 	resizeTo(width, height)
 	scroll(x-coord, y-coord)
@@ -950,6 +1031,8 @@ Document() {
 	scrollBy(options)
 	scrollTo(x-coord, y-coord)
 	scrollTo(options)
+	showOpenFilePicker()
+	showSaveFilePicker()
 	stop()
 }
 
@@ -995,9 +1078,19 @@ FormData([form]) {
 	values()
 }
 
-// https://developer.mozilla.org/en-US/docs/Web/API/WindowOrWorkerGlobalScope
+// https://developer.mozilla.org/en-US/docs/Web/API/Worker
+Worker() {
+	postMessage(message, transfer)
+	terminate()
+}
+
+// https://developer.mozilla.org/en-US/docs/Web/API/WorkerGlobalScope
 {
+	caches
 	indexedDB
+	origin
+	scheduler
+	importScripts(path0, path1, /* ... ,*/ pathN)
 	atob(encodedData)
 	btoa(stringToEncode)
 	clearInterval(intervalID)
@@ -1007,6 +1100,8 @@ FormData([form]) {
 	queueMicrotask(function)
 	setInterval(func, delay[, param1, param2, ...])
 	setTimeout(function[, delay, param1, param2, ...])
+	structuredClone(value[, options])
+	reportError(throwable)
 }
 
 // https://developer.mozilla.org/en-US/docs/Web/API/Storage
@@ -1018,6 +1113,3 @@ FormData([form]) {
 	removeItem(keyName)
 	setItem(keyName, keyValue)
 }
-
-// https://api.jquery.com/
-jQuery

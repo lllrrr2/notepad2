@@ -5,28 +5,32 @@
 // Copyright 1998-2002 by Neil Hodgson <neilh@scintilla.org>
 // The License.txt file describes the conditions under which this software may be distributed.
 
-#include <cstdlib>
 #include <cassert>
+#include <cstring>
 
 #include <string>
 #include <string_view>
+#include <vector>
+//#include <map>
 
 #include "ILexer.h"
 #include "Scintilla.h"
-#include "SciLexer.h"
 
 #include "PropSetSimple.h"
-#include "WordList.h"
 #include "LexAccessor.h"
 #include "Accessor.h"
 
 using namespace Lexilla;
 
-Accessor::Accessor(Scintilla::IDocument *pAccess_, const PropSetSimple *pprops_) noexcept : LexAccessor(pAccess_), pprops(pprops_) {
+Accessor::Accessor(Scintilla::IDocument *pAccess_, const PropSetSimple &props_) noexcept : LexAccessor(pAccess_), props(props_) {
+}
+
+const char *Accessor::GetProperty(const char *key, size_t keyLen) const {
+	return props.Get(std::string_view(key, keyLen));
 }
 
 int Accessor::GetPropertyInt(const char *key, size_t keyLen, int defaultValue) const {
-	return pprops->GetInt(key, keyLen, defaultValue);
+	return props.GetInt(key, keyLen, defaultValue);
 }
 
 int Accessor::IndentAmount(Sci_Line line) noexcept {

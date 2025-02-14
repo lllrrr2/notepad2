@@ -16,8 +16,10 @@ typeAliases = {
 	"cells": "const char *",
 	"colour": "Colour",
 	"colouralpha": "ColourAlpha",
-	"findtext": "void *",
-	"formatrange": "void *",
+	"findtext": "TextToFindFull *",
+	"findtextfull": "TextToFindFull *",
+	"formatrange": "const RangeToFormatFull *",
+	"formatrangefull": "const RangeToFormatFull *",
 	"int": "int",
 	"keymod": "int",
 	"line": "Line",
@@ -25,7 +27,8 @@ typeAliases = {
 	"position": "Position",
 	"string": "const char *",
 	"stringresult": "char *",
-	"textrange": "void *",
+	"textrange": "const TextRangeFull *",
+	"textrangefull": "const TextRangeFull *",
 }
 
 basicTypes = [
@@ -50,12 +53,16 @@ deadValues = [
 ]
 
 def ActualTypeName(typeName, identifier=None):
+	if typeName == "pointer" and identifier in ["doc", "DocPointer", "CreateDocument"]:
+		return "IDocumentEditable *"
 	if typeName in typeAliases:
 		return typeAliases[typeName]
 	return typeName
 
 def IsEnumeration(s):
 	if s in ["Position", "Line", "Colour", "ColourAlpha"]:
+		return False
+	if s.endswith("*"):
 		return False
 	return s[:1].isupper()
 
@@ -77,7 +84,7 @@ def ParametersArgsCallname(v):
 	if param1Type:
 		castName = param1Name
 		if param1Type.endswith("*"):
-			castName = "reinterpret_cast<uintptr_t>(" + param1Name + ")"
+			castName = "AsInteger<uintptr_t>(" + param1Name + ")"
 		elif param1Type not in basicTypes:
 			castName = "static_cast<uintptr_t>(" + param1Name + ")"
 		if IsEnumeration(param1TypeBase):
@@ -95,6 +102,8 @@ def ParametersArgsCallname(v):
 		if param2Type.endswith("*"):
 			if param2Type == "const char *":
 				callName = "CallString"
+			elif param2Type.startswith('const '):
+				callName = "CallConstPointer"
 			else:
 				callName = "CallPointer"
 		elif param2Type not in basicTypes:
@@ -212,7 +221,7 @@ def HMethods(f):
 			if featureType in ["fun", "get", "set"]:
 				if featureType == "get" and name.startswith("Get"):
 					name = name[len("Get"):]
-				retType = ActualTypeName(v["ReturnType"])
+				retType = ActualTypeName(v["ReturnType"], name)
 				if IsEnumeration(retType):
 					retType = namespace + retType
 				parameters, args, callName = ParametersArgsCallname(v)
@@ -235,20 +244,20 @@ def CXXMethods(f):
 				msgName = "Message::" + name
 				if featureType == "get" and name.startswith("Get"):
 					name = name[len("Get"):]
-				retType = ActualTypeName(v["ReturnType"])
+				retType = ActualTypeName(v["ReturnType"], name)
 				parameters, args, callName = ParametersArgsCallname(v)
 				returnIfNeeded = "return " if retType != "void" else ""
 
 				out.append(JoinTypeAndIdentifier(retType, "ScintillaCall::" + name) + "(" + parameters + ")" + " {")
 				retCast = ""
 				retCastEnd = ""
-				if retType not in basicTypes or retType in ["int", "Colour", "ColourAlpha"]:
+				if retType.endswith("*"):
+					retCast = "AsPointer<" + retType + ">("
+					retCastEnd = ")"
+				elif retType not in basicTypes or retType in ["int", "Colour", "ColourAlpha"]:
 					if IsEnumeration(retType):
 						retType = namespace + retType
 					retCast = "static_cast<" + retType + ">("
-					retCastEnd = ")"
-				elif retType in ["void *"]:
-					retCast = "reinterpret_cast<" + retType + ">("
 					retCastEnd = ")"
 				out.append("\t" + returnIfNeeded + retCast + callName + "(" + msgName + args + ")" + retCastEnd + ";")
 				out.append("}")

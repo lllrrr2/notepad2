@@ -49,7 +49,6 @@ public:
 	WorkItems items = WorkItems::none;
 	Sci::Position upTo = 0;
 
-	WorkNeeded() noexcept = default;
 	void Reset() noexcept {
 		items = WorkItems::none;
 		upTo = 0;
@@ -119,7 +118,7 @@ struct WrapPending {
 		lineLarge = 0x7ffffff
 	};
 	Sci::Line start;	// When there are wraps pending, will be in document range
-	Sci::Line end;	// May be lineLarge to indicate all of document after start
+	Sci::Line end;	// May be lineLarge to indicate all of the document after start
 	WrapPending() noexcept {
 		start = lineLarge;
 		end = lineLarge;
@@ -238,22 +237,23 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	Idler idler;
 
 	Point lastClick;
-	unsigned int lastClickTime;
 	Point doubleClickCloseThreshold;
+	unsigned int lastClickTime;
 	int dwellDelay;
 	int ticksToDwell;
 	bool dwelling;
+	bool dropWentOutside;
 	enum class TextUnit {
 		character, word, subLine, wholeLine
 	} selectionUnit;
-	Point ptMouseLast;
 	enum class DragDrop {
 		none, initial, dragging
 	} inDragDrop;
-	bool dropWentOutside;
+	Point ptMouseLast;
 	SelectionPosition posDrop;
 	Sci::Position hotSpotClickPos;
 	int lastXChosen;
+	int autoInsertMask;
 	Sci::Position lineAnchorPos;
 	Sci::Position originalAnchorPos;
 	Sci::Position wordSelectAnchorStartPos;
@@ -278,21 +278,28 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	Scintilla::IdleStyling idleStyling;
 	bool needIdleStyling;
 
+	bool recordingMacro;
+	bool convertPastes;
+
 	bool commandEvents;
 	Scintilla::ModificationFlags modEventMask;
 
 	SelectionText drag;
 
 	CaretPolicies caretPolicies;
-
 	VisiblePolicySlop visiblePolicy;
 
 	Sci::Position searchAnchor;
 
-	bool recordingMacro;
-	bool convertPastes;
-
 	Scintilla::AutomaticFold foldAutomatic;
+
+	int batchUpdateDepth;
+	struct BatchUpdateSavedState {
+		ModificationFlags modEventMask;
+		int actions;
+		Sci::Line lines;
+	};
+	BatchUpdateSavedState batchUpdateState;
 
 	// Wrapping support
 	WrapPending wrapPending;
@@ -308,17 +315,19 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	void SetRepresentations();
 	void DropGraphics() noexcept;
 
+	bool HasMarginWindow() const noexcept;
 	// The top left visible point in main window coordinates. Will be (0, 0) except for
 	// scroll views where it will be equivalent to the current scroll position.
 	Point GetVisibleOriginInMain() const noexcept override;
 	PointDocument SCICALL DocumentPointFromView(Point ptView) const noexcept;  // Convert a point from view space to document
-	Sci::Line TopLineOfMain() const noexcept override;   // Return the line at Main's y coordinate 0
+	Sci::Line TopLineOfMain() const noexcept final;   // Return the line at Main's y coordinate 0
+	//virtual Point ClientSize() const noexcept;
 	virtual PRectangle GetClientRectangle() const noexcept;
 	virtual PRectangle GetClientDrawingRectangle() const noexcept;
 	PRectangle GetTextRectangle() const noexcept;
 
 	Sci::Line LinesOnScreen() const noexcept override;
-	void OnLineWrapped(Sci::Line lineDoc, int linesWrapped) override;
+	void OnLineWrapped(Sci::Line lineDoc, int linesWrapped, int option) override;
 	Sci::Line LinesToScroll() const noexcept;
 	Sci::Line MaxScrollPos() const noexcept;
 	SelectionPosition ClampPositionIntoDocument(SelectionPosition sp) const noexcept;
@@ -362,6 +371,7 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	};
 	void MultipleSelectAdd(AddNumber addNumber);
 	bool RangeContainsProtected(Sci::Position start, Sci::Position end) const noexcept;
+	bool RangeContainsProtected(const SelectionRange &range) const noexcept;
 	bool SelectionContainsProtected() const noexcept;
 	Sci::Position MovePositionOutsideChar(Sci::Position pos, Sci::Position moveDir, bool checkLineEnd = true) const noexcept;
 	SelectionPosition MovePositionOutsideChar(SelectionPosition pos, Sci::Position moveDir, bool checkLineEnd = true) const noexcept;
@@ -369,15 +379,15 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 		bool ensureVisible, CaretPolicies policies);
 	void MovePositionTo(SelectionPosition newPos, Selection::SelTypes selt = Selection::SelTypes::none, bool ensureVisible = true);
 	void MovePositionTo(Sci::Position newPos, Selection::SelTypes selt = Selection::SelTypes::none, bool ensureVisible = true);
-	SelectionPosition MovePositionSoVisible(SelectionPosition pos, int moveDir) noexcept;
-	SelectionPosition MovePositionSoVisible(Sci::Position pos, int moveDir) noexcept;
+	SelectionPosition MovePositionSoVisible(SelectionPosition pos, int moveDir) const noexcept;
+	SelectionPosition MovePositionSoVisible(Sci::Position pos, int moveDir) const noexcept;
 	Point PointMainCaret();
 	void SetLastXChosen();
 
 	void ScrollTo(Sci::Line line, bool moveThumb = true);
 	virtual void ScrollText(Sci::Line linesToMove);
 	void HorizontalScrollTo(int xPos);
-	void VerticalCentreCaret() noexcept;
+	void VerticalCentreCaret();
 	void MoveSelectedLines(int lineDelta);
 	void MoveSelectedLinesUp();
 	void MoveSelectedLinesDown();
@@ -400,12 +410,13 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	void DropCaret();
 	void CaretSetPeriod(int period);
 	void InvalidateCaret();
-	virtual void NotifyCaretMove() noexcept;
-	virtual void UpdateSystemCaret();
+	virtual void NotifyCaretMove() noexcept = 0;
+	virtual void UpdateSystemCaret() = 0;
 
 	bool Wrapping() const noexcept;
 	void NeedWrapping(Sci::Line docLineStart = 0, Sci::Line docLineEnd = WrapPending::lineLarge, bool invalidate = true) noexcept;
 	bool WrapOneLine(Surface *surface, Sci::Position positionInsert);
+	bool WrapBlock(Surface *surface, Sci::Line lineToWrap, Sci::Line lineToWrapEnd, Sci::Line &partialLine);
 	enum class WrapScope {
 		wsAll, wsVisible, wsIdle
 	};
@@ -416,7 +427,7 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	void SCICALL PaintSelMargin(Surface *surfaceWindow, PRectangle rc);
 	void RefreshPixMaps(Surface *surfaceWindow);
 	void SCICALL Paint(Surface *surfaceWindow, PRectangle rcArea);
-	Sci::Position FormatRange(bool draw, const Scintilla::RangeToFormat *pfr);
+	Sci::Position FormatRange(Scintilla::Message iMessage, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);
 	long TextWidth(Scintilla::uptr_t style, const char *text);
 
 	virtual void SetVerticalScrollPos() = 0;
@@ -426,11 +437,12 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	void SetScrollBars();
 	void ChangeSize();
 
-	void FilterSelections();
+	void FilterSelections() noexcept;
 	Sci::Position RealizeVirtualSpace(Sci::Position position, Sci::Position virtualSpace);
 	SelectionPosition RealizeVirtualSpace(SelectionPosition position);
 	void AddChar(char ch);
 	virtual void InsertCharacter(std::string_view sv, Scintilla::CharacterSource charSource);
+	void ClearSelectionRange(SelectionRange &range);
 	void ClearBeforeTentativeStart();
 	void InsertPaste(const char *text, Sci::Position len);
 	enum class PasteShape {
@@ -442,8 +454,9 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	void ClearDocumentStyle();
 	virtual void Cut(bool asBinary, bool lineCopy = false);
 	void PasteRectangular(SelectionPosition pos, const char *ptr, Sci::Position len);
-	virtual void Copy(bool asBinary) = 0;
-	void CopyAllowLine();
+	virtual void Copy(bool asBinary) const = 0;
+	void CopyAllowLine() const;
+	void CutAllowLine();
 	virtual bool CanPaste() noexcept;
 	virtual void Paste(bool asBinary) = 0;
 	void Clear();
@@ -454,24 +467,15 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	void DelCharBack(bool allowLineStartDeletion);
 	virtual void ClaimSelection() noexcept = 0;
 
-	static constexpr Scintilla::KeyMod ModifierFlags(bool shift, bool ctrl, bool alt, bool meta = false, bool super = false) noexcept {
-		return
-			(shift ? KeyMod::Shift : KeyMod::Norm) |
-			(ctrl ? KeyMod::Ctrl : KeyMod::Norm) |
-			(alt ? KeyMod::Alt : KeyMod::Norm) |
-			(meta ? KeyMod::Meta : KeyMod::Norm) |
-			(super ? KeyMod::Super : KeyMod::Norm);
-	}
-
 	virtual void NotifyChange() noexcept = 0;
 	virtual void NotifyFocus(bool focus);
 	virtual void SetCtrlID(int identifier) noexcept;
 	virtual int GetCtrlID() const noexcept {
 		return ctrlID;
 	}
-	virtual void NotifyParent(Scintilla::NotificationData scn) noexcept = 0;
+	virtual void NotifyParent(Scintilla::NotificationData &scn) const noexcept = 0;
 	virtual void NotifyStyleToNeeded(Sci::Position endStyleNeeded);
-	void NotifyChar(int ch, Scintilla::CharacterSource charSource) noexcept;
+	void NotifyChar(int ch, Scintilla::CharacterSource charSource, bool handled = false) noexcept;
 	void NotifySavePoint(bool isSavePoint) noexcept;
 	void NotifyModifyAttempt() noexcept;
 	virtual void NotifyDoubleClick(Point pt, Scintilla::KeyMod modifiers);
@@ -482,7 +486,7 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	void NotifyPainted() noexcept;
 	void NotifyIndicatorClick(bool click, Sci::Position position, Scintilla::KeyMod modifiers) noexcept;
 	bool NotifyMarginClick(Point pt, Scintilla::KeyMod modifiers);
-	bool NotifyMarginRightClick(Point pt, Scintilla::KeyMod modifiers);
+	bool NotifyMarginRightClick(Point pt, Scintilla::KeyMod modifiers) noexcept;
 	void NotifyNeedShown(Sci::Position pos, Sci::Position len) noexcept;
 	void NotifyCodePageChanged(int oldCodePage) noexcept;
 	void NotifyDwelling(Point pt, bool state);
@@ -490,11 +494,10 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 
 	void NotifyModifyAttempt(Document *document, void *userData) noexcept override;
 	void NotifySavePoint(Document *document, void *userData, bool atSavePoint) noexcept override;
-	void CheckModificationForWrap(DocModification mh);
+	void CheckModificationForShow(const DocModification &mh);
 	void NotifyModified(Document *document, DocModification mh, void *userData) override;
 	void NotifyDeleted(Document *document, void *userData) noexcept override;
 	void NotifyStyleNeeded(Document *doc, void *userData, Sci::Position endStyleNeeded) override;
-	void NotifyLexerChanged(Document *doc, void *userData) override;
 	void NotifyErrorOccurred(Document *doc, void *userData, Scintilla::Status status) noexcept override;
 	void NotifyMacroRecord(Scintilla::Message iMessage, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam) noexcept;
 
@@ -503,8 +506,9 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	enum class CaseMapping {
 		same, upper, lower
 	};
-	virtual std::string CaseMapString(const std::string &s, CaseMapping caseMapping);
+	virtual std::string CaseMapString(const std::string &s, CaseMapping caseMapping) const;
 	void ChangeCaseOfSelection(CaseMapping caseMapping);
+	void LineDelete();
 	void LineTranspose();
 	void LineReverse();
 	void Duplicate(bool forLine);
@@ -515,40 +519,46 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	void ParaUpOrDown(int direction, Selection::SelTypes selt);
 	Range RangeDisplayLine(Sci::Line lineVisible);
 	Sci::Position StartEndDisplayLine(Sci::Position pos, bool start);
+	Sci::Position HomeWrapPosition(Sci::Position position);
 	Sci::Position VCHomeDisplayPosition(Sci::Position position);
 	Sci::Position VCHomeWrapPosition(Sci::Position position);
 	Sci::Position LineEndWrapPosition(Sci::Position position);
+	SelectionPosition PositionMove(Scintilla::Message iMessage, SelectionPosition spCaretNow);
+	SelectionRange SelectionMove(Scintilla::Message iMessage, size_t r);
 	int HorizontalMove(Scintilla::Message iMessage);
 	int DelWordOrLine(Scintilla::Message iMessage);
 	virtual int KeyCommand(Scintilla::Message iMessage);
 	virtual int KeyDefault(Scintilla::Keys /* key */, Scintilla::KeyMod /*modifiers*/) noexcept;
 	int KeyDownWithModifiers(Scintilla::Keys key, Scintilla::KeyMod modifiers, bool *consumed);
 
-	void Indent(bool forwards);
+	void Indent(bool forwards, bool lineIndent);
 
 	virtual std::unique_ptr<CaseFolder> CaseFolderForEncoding();
-	Sci::Position FindText(Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);
+	Sci::Position FindTextFull(Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);
 	void SearchAnchor() noexcept;
 	Sci::Position SearchText(Scintilla::Message iMessage, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);
 	Sci::Position SearchInTarget(const char *text, Sci::Position length);
 	void GoToLine(Sci::Line lineNo);
 
-	virtual void CopyToClipboard(const SelectionText &selectedText) = 0;
+	virtual void CopyToClipboard(const SelectionText &selectedText) const = 0;
 	std::string RangeText(Sci::Position start, Sci::Position end) const;
-	void CopySelectionRange(SelectionText *ss, bool allowLineCopy = false);
-	void CopyRangeToClipboard(Sci::Position start, Sci::Position end, bool lineCopy = false);
-	void CopyText(size_t length, const char *text);
+	bool CopyLineRange(SelectionText &ss, bool allowProtected = true) const;
+	void CopySelectionRange(SelectionText &ss, bool allowLineCopy = false) const;
+	void CopyRangeToClipboard(Sci::Position start, Sci::Position end, bool lineCopy = false) const;
+	void CopyText(size_t length, const char *text) const;
 	void SetDragPosition(SelectionPosition newPos);
 	virtual void DisplayCursor(Window::Cursor c) noexcept;
 	virtual bool SCICALL DragThreshold(Point ptStart, Point ptNow) noexcept;
-	virtual void StartDrag();
+	virtual void StartDrag() = 0;
 	void DropAt(SelectionPosition position, const char *value, size_t lengthValue, bool moving, bool rectangular);
 	void DropAt(SelectionPosition position, const char *value, bool moving, bool rectangular);
 	/** PositionInSelection returns true if position in selection. */
-	bool PositionInSelection(Sci::Position pos) noexcept;
+	bool PositionInSelection(Sci::Position pos) const noexcept;
 	bool SCICALL PointInSelection(Point pt);
+	ptrdiff_t SCICALL SelectionFromPoint(Point pt);
 	bool SCICALL PointInSelMargin(Point pt) const noexcept;
 	Window::Cursor GetMarginCursor(Point pt) const noexcept;
+	void DropSelection(size_t part) noexcept;
 	void TrimAndSetSelection(Sci::Position currentPos_, Sci::Position anchor_);
 	void LineSelection(Sci::Position lineCurrentPos_, Sci::Position lineAnchorPos_, bool wholeLine);
 	void WordSelection(Sci::Position pos);
@@ -564,16 +574,15 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 		caret, scroll, widen, dwell, platform
 	};
 	virtual void TickFor(TickReason reason);
-	virtual bool FineTickerRunning(TickReason reason) noexcept;
-	virtual void FineTickerStart(TickReason reason, int millis, int tolerance) noexcept;
-	virtual void FineTickerCancel(TickReason reason) noexcept;
-	virtual bool SetIdle(bool) noexcept {
-		return false;
-	}
+	virtual bool FineTickerRunning(TickReason reason) const noexcept = 0;
+	virtual void FineTickerStart(TickReason reason, int millis, int tolerance) noexcept = 0;
+	virtual void FineTickerCancel(TickReason reason) noexcept = 0;
+	virtual bool SetIdle(bool on) noexcept = 0;
+	void ChangeMouseCapture(bool on) noexcept;
 	virtual void SetMouseCapture(bool on) noexcept = 0;
-	virtual bool HaveMouseCapture() noexcept = 0;
+	virtual bool HaveMouseCapture() const noexcept = 0;
 	void SetFocusState(bool focusState);
-	virtual void UpdateBaseElements();
+	virtual void UpdateBaseElements() noexcept = 0;
 
 	Sci::Position SCICALL PositionAfterArea(PRectangle rcArea) const noexcept;
 	void StyleToPositionInView(Sci::Position pos);
@@ -599,7 +608,7 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	void SetAnnotationVisible(Scintilla::AnnotationVisible visible);
 	void SetEOLAnnotationVisible(Scintilla::EOLAnnotationVisible visible) noexcept;
 
-	Sci::Line ExpandLine(Sci::Line line);
+	Sci::Line ExpandLine(Sci::Line line, Scintilla::FoldLevel level = Scintilla::FoldLevel::None, Sci::Line *parentLine = nullptr);
 	void SetFoldExpanded(Sci::Line lineDoc, bool expanded);
 	void FoldLine(Sci::Line line, Scintilla::FoldAction action);
 	void FoldExpand(Sci::Line line, Scintilla::FoldAction action, Scintilla::FoldLevel level);
@@ -610,7 +619,7 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	void FoldAll(Scintilla::FoldAction action);
 
 	Sci::Position GetTag(char *tagValue, int tagNumber);
-	Sci::Position ReplaceTarget(bool replacePatterns, const char *text, Sci::Position length = -1);
+	Sci::Position ReplaceTarget(Scintilla::Message iMessage, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);
 
 	bool PositionIsHotspot(Sci::Position position) const noexcept;
 	bool SCICALL PointIsHotspot(Point pt);
@@ -619,9 +628,7 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	void SCICALL SetHoverIndicatorPoint(Point pt);
 
 	int CodePage() const noexcept;
-	virtual bool ValidCodePage(int /* codePage */) const noexcept {
-		return true;
-	}
+	virtual bool ValidCodePage(int codePage) const noexcept = 0;
 	virtual std::string UTF8FromEncoded(std::string_view encoded) const = 0;
 	virtual std::string EncodedFromUTF8(std::string_view utf8) const = 0;
 	std::unique_ptr<Surface> CreateMeasurementSurface() const;
@@ -629,36 +636,36 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 
 	Sci::Line WrapCount(Sci::Line line);
 	void AddStyledText(const char *buffer, Sci::Position appendLength);
+	Sci::Position GetTextRange(char *buffer, Sci::Position cpMin, Sci::Position cpMax, bool style = false) const noexcept;
 
 	virtual sptr_t DefWndProc(Scintilla::Message iMessage, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam) = 0;
 	bool ValidMargin(Scintilla::uptr_t wParam) const noexcept;
 	void StyleSetMessage(Scintilla::Message iMessage, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);
 	Scintilla::sptr_t StyleGetMessage(Scintilla::Message iMessage, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);
 	void SetSelectionNMessage(Scintilla::Message iMessage, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam) noexcept;
-
-	static const char *StringFromEOLMode(Scintilla::EndOfLine eolMode) noexcept;
+	void SetSelectionMode(uptr_t wParam, bool setMoveExtends);
 
 	// Coercion functions for transforming WndProc parameters into pointers
-	static void *PtrFromSPtr(Scintilla::sptr_t lParam) noexcept {
-		return reinterpret_cast<void *>(lParam);
-	}
 	static const char *ConstCharPtrFromSPtr(Scintilla::sptr_t lParam) noexcept {
-		return static_cast<const char *>(PtrFromSPtr(lParam));
+		return AsPointer<const char *>(lParam);
 	}
 	static const unsigned char *ConstUCharPtrFromSPtr(Scintilla::sptr_t lParam) noexcept {
-		return static_cast<const unsigned char *>(PtrFromSPtr(lParam));
+		return AsPointer<const unsigned char *>(lParam);
 	}
 	static char *CharPtrFromSPtr(Scintilla::sptr_t lParam) noexcept {
-		return static_cast<char *>(PtrFromSPtr(lParam));
+		return AsPointer<char *>(lParam);
 	}
 	static unsigned char *UCharPtrFromSPtr(Scintilla::sptr_t lParam) noexcept {
-		return static_cast<unsigned char *>(PtrFromSPtr(lParam));
+		return AsPointer<unsigned char *>(lParam);
 	}
-	static void *PtrFromUPtr(Scintilla::uptr_t wParam) noexcept {
-		return reinterpret_cast<void *>(wParam);
+	static std::string_view ViewFromParams(Scintilla::sptr_t lParam, Scintilla::uptr_t wParam) noexcept {
+		if (SPtrFromUPtr(wParam) < 0) {
+			return std::string_view(CharPtrFromSPtr(lParam));
+		}
+		return std::string_view(CharPtrFromSPtr(lParam), wParam);
 	}
 	static const char *ConstCharPtrFromUPtr(Scintilla::sptr_t wParam) noexcept {
-		return static_cast<const char *>(PtrFromUPtr(wParam));
+		return AsPointer<const char *>(wParam);
 	}
 
 	static constexpr Scintilla::sptr_t SPtrFromUPtr(Scintilla::uptr_t wParam) noexcept {
@@ -674,15 +681,9 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 		return Point(static_cast<XYPOSITION>(wParam) - vs.ExternalMarginWidth(), static_cast<XYPOSITION>(lParam));
 	}
 
-	static constexpr std::optional<FoldLevel> OptionalFoldLevel(Scintilla::sptr_t lParam) {
-		if (lParam >= 0) {
-			return static_cast<FoldLevel>(lParam);
-		}
-		return std::nullopt;
-	}
-
 	static Scintilla::sptr_t StringResult(Scintilla::sptr_t lParam, const char *val) noexcept;
 	static Scintilla::sptr_t BytesResult(Scintilla::sptr_t lParam, const unsigned char *val, size_t len) noexcept;
+	static Scintilla::sptr_t BytesResult(Scintilla::sptr_t lParam, std::string_view sv) noexcept;
 
 	// Set a variable controlling appearance to a value and invalidates the display
 	// if a change was made. Avoids extra text and the possibility of mistyping.
@@ -709,6 +710,8 @@ public:
 	bool IsUnicodeMode() const noexcept;
 	// Public so scintilla_send_message can use it.
 	virtual Scintilla::sptr_t WndProc(Scintilla::Message iMessage, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);
+	void BeginBatchUpdate() noexcept;
+	void EndBatchUpdate() noexcept;
 	// Public so scintilla_set_id can use it.
 	int ctrlID;
 	// Public so COM methods for drag and drop can set it.

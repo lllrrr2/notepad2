@@ -101,6 +101,7 @@ struct FontParameters {
 	const char *faceName;
 	XYPOSITION size;
 	Scintilla::FontWeight weight;
+	Scintilla::FontStretch stretch;
 	bool italic;
 	Scintilla::FontQuality extraFontFlag;
 	Scintilla::Technology technology;
@@ -111,6 +112,7 @@ struct FontParameters {
 		const char *faceName_,
 		XYPOSITION size_ = 10,
 		Scintilla::FontWeight weight_ = Scintilla::FontWeight::Normal,
+		Scintilla::FontStretch stretch_ = Scintilla::FontStretch::Normal,
 		bool italic_ = false,
 		Scintilla::FontQuality extraFontFlag_ = Scintilla::FontQuality::QualityDefault,
 		Scintilla::Technology technology_ = Scintilla::Technology::Default,
@@ -120,6 +122,7 @@ struct FontParameters {
 		faceName(faceName_),
 		size(size_),
 		weight(weight_),
+		stretch(stretch_),
 		italic(italic_),
 		extraFontFlag(extraFontFlag_),
 		technology(technology_),
@@ -169,7 +172,7 @@ public:
  */
 struct SurfaceMode final {
 	int codePage = 0;
-	bool bidiR2L = false;
+	//bool bidiR2L = false;
 };
 
 /**
@@ -333,7 +336,7 @@ public:
 	virtual void SetVisibleRows(int rows) noexcept = 0;
 	virtual int GetVisibleRows() const noexcept = 0;
 	virtual PRectangle GetDesiredRect() = 0;
-	virtual int CaretFromEdge() const = 0;
+	virtual int CaretFromEdge() const noexcept = 0;
 	virtual void Clear() noexcept = 0;
 	virtual void Append(const char *s, int type = -1) const noexcept = 0;
 	virtual int Length() const noexcept = 0;
@@ -346,7 +349,7 @@ public:
 	virtual void ClearRegisteredImages() noexcept = 0;
 	virtual void SetDelegate(IListBoxDelegate *lbDelegate) noexcept = 0;
 	virtual void SetList(const char* list, char separator, char typesep) = 0;
-	virtual void SCICALL SetOptions(ListOptions options_) noexcept = 0;
+	virtual void SCICALL SetOptions(const ListOptions &options_) noexcept = 0;
 };
 
 /**

@@ -34,10 +34,26 @@ enum class DrawPhase {
 };
 
 enum class LayoutLineOption {
-	AutoUpdate,
-	ManualUpdate,
-	KeepPosition,
+	AutoUpdate = 0,
+	ManualUpdate = 1,
+	IdleUpdate = 2,
+	PaintText = 3,
+	Printing = 4,
+	CallerMultiThreaded = 8,
+	DisablePartialLayout = 16,
 };
+
+inline std::string_view FormatNumber(char (&number)[32], size_t value) noexcept {
+	//const auto [ptr, error] = std::to_chars(number, std::end(number), value);
+	//return std::string_view(number, ptr - number);
+	char * const end = number + (10*sizeof(size_t) + 2)/4;
+	char *ptr = end;
+	do {
+		*--ptr = static_cast<char>((value % 10) + '0');
+		value /= 10;
+	} while (value != 0);
+	return std::string_view(ptr, end - ptr);
+}
 
 bool ValidStyledText(const ViewStyle &vs, size_t styleOffset, const StyledText &st) noexcept;
 int WidestLineWidth(Surface *surface, const ViewStyle &vs, int styleOffset, const StyledText &st);
@@ -56,11 +72,9 @@ class LineTabstops;
 */
 class EditView final {
 public:
-	PrintParameters printParameters;
 	std::unique_ptr<LineTabstops> ldTabstops;
 	int tabWidthMinimumPixels;
 
-	bool hideSelection;
 	bool drawOverstrikeCaret; // used by the curses platform
 
 	/** In bufferedDraw mode, graphics operations are drawn to a pixmap and then copied to
@@ -86,6 +100,7 @@ public:
 
 	LineLayoutCache llc;
 	PositionCache posCache;
+	PrintParameters printParameters;
 
 	int tabArrowHeight; // draw arrow heads this many pixels above/below line midpoint
 	/** Some platforms, notably PLAT_CURSES, do not support Scintilla's native
@@ -132,33 +147,30 @@ public:
 	Sci::Line DisplayFromPosition(Surface *surface, const EditModel &model, Sci::Position pos, const ViewStyle &vs);
 	Sci::Position StartEndDisplayLine(Surface *surface, const EditModel &model, Sci::Position pos, bool start, const ViewStyle &vs);
 
-	void SCICALL DrawIndentGuide(Surface *surface, Sci::Line lineVisible, int lineHeight, XYPOSITION start, PRectangle rcSegment, bool highlight) const;
-	void SCICALL DrawEOL(Surface *surface, const EditModel &model, const ViewStyle &vsDraw, const LineLayout *ll, PRectangle rcLine,
-		Sci::Line line, Sci::Position lineEnd, int xStart, int subLine, XYACCUMULATOR subLineStart,
-		std::optional<ColourRGBA> background) const;
+private:
+	void SCICALL DrawEOL(Surface *surface, const EditModel &model, const ViewStyle &vsDraw, const LineLayout *ll,
+		Sci::Line line, int xStart, PRectangle rcLine, int subLine, Sci::Position lineEnd, XYPOSITION subLineStart, ColourOptional background) const;
 	void SCICALL DrawFoldDisplayText(Surface *surface, const EditModel &model, const ViewStyle &vsDraw, const LineLayout *ll,
-		Sci::Line line, int xStart, PRectangle rcLine, int subLine, XYACCUMULATOR subLineStart, DrawPhase phase);
+		Sci::Line line, int xStart, PRectangle rcLine, int subLine, XYPOSITION subLineStart, DrawPhase phase);
 	void SCICALL DrawEOLAnnotationText(Surface *surface, const EditModel &model, const ViewStyle &vsDraw, const LineLayout *ll,
-		Sci::Line line, int xStart, PRectangle rcLine, int subLine, XYACCUMULATOR subLineStart, DrawPhase phase);
+		Sci::Line line, int xStart, PRectangle rcLine, int subLine, XYPOSITION subLineStart, DrawPhase phase);
 	void SCICALL DrawAnnotation(Surface *surface, const EditModel &model, const ViewStyle &vsDraw, const LineLayout *ll,
 		Sci::Line line, int xStart, PRectangle rcLine, int subLine, DrawPhase phase);
-	void SCICALL DrawCarets(Surface *surface, const EditModel &model, const ViewStyle &vsDraw, const LineLayout *ll, Sci::Line lineDoc,
-		int xStart, PRectangle rcLine, int subLine) const;
-	void SCICALL DrawBackground(Surface *surface, const EditModel &model, const ViewStyle &vsDraw, const LineLayout *ll, PRectangle rcLine,
-		Range lineRange, Sci::Position posLineStart, int xStart,
-		int subLine, std::optional<ColourRGBA> background) const;
-	void SCICALL DrawForeground(Surface *surface, const EditModel &model, const ViewStyle &vsDraw, const LineLayout *ll, Sci::Line lineVisible,
-		PRectangle rcLine, Range lineRange, Sci::Position posLineStart, int xStart,
-		int subLine, std::optional<ColourRGBA> background) const;
+	void SCICALL DrawCarets(Surface *surface, const EditModel &model, const ViewStyle &vsDraw, const LineLayout *ll,
+		Sci::Line lineDoc, int xStart, PRectangle rcLine, int subLine) const;
+	void SCICALL DrawIndentGuide(Surface *surface, XYPOSITION start, PRectangle rcSegment, bool highlight, bool offset) const;
+	void SCICALL DrawForeground(Surface *surface, const EditModel &model, const ViewStyle &vsDraw, const LineLayout *ll,
+		int xStart, PRectangle rcLine, int subLine, Sci::Line lineVisible, Range lineRange, Sci::Position posLineStart,
+		ColourOptional background) const;
 	void SCICALL DrawIndentGuidesOverEmpty(Surface *surface, const EditModel &model, const ViewStyle &vsDraw, const LineLayout *ll,
-		Sci::Line line, Sci::Line lineVisible, PRectangle rcLine, int xStart, int subLine) const;
-	void SCICALL DrawLine(Surface *surface, const EditModel &model, const ViewStyle &vsDraw, const LineLayout *ll, Sci::Line line,
-		Sci::Line lineVisible, int xStart, PRectangle rcLine, int subLine, DrawPhase phase);
-	void SCICALL PaintText(Surface *surfaceWindow, const EditModel &model, PRectangle rcArea, PRectangle rcClient,
-		const ViewStyle &vsDraw);
-	void SCICALL FillLineRemainder(Surface *surface, const EditModel &model, const ViewStyle &vsDraw, const LineLayout *ll,
-		Sci::Line line, PRectangle rcArea, int subLine) const;
-	Sci::Position FormatRange(bool draw, const Scintilla::RangeToFormat *pfr, Surface *surface, Surface *surfaceMeasure,
+		Sci::Line line, int xStart, PRectangle rcLine, int subLine, Sci::Line lineVisible) const;
+	void SCICALL DrawLine(Surface *surface, const EditModel &model, const ViewStyle &vsDraw, const LineLayout *ll,
+		Sci::Line line, Sci::Line lineVisible, int xStart, PRectangle rcLine, int subLine, DrawPhase phase);
+
+public:
+	void SCICALL PaintText(Surface *surfaceWindow, const EditModel &model, const ViewStyle &vsDraw,
+		PRectangle rcArea, PRectangle rcClient);
+	Sci::Position SCICALL FormatRange(bool draw, CharacterRangeFull chrg, Scintilla::Rectangle rc, Surface *surface, Surface *surfaceMeasure,
 		const EditModel &model, const ViewStyle &vs);
 };
 
